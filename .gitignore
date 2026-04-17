@@ -50,3 +50,6 @@ pino-*.log
 .vercel
 .fly
 *.pem
+
+# local dev tooling — not for the repo
+.claude/
