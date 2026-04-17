@@ -108,3 +108,44 @@ Starting the shared package first, as the spec requires. Data shapes live here, 
 - `pnpm --filter @resumerx/shared test` → 7 pass
 
 **What I'd do next time:** probably would have put the schemas in a `resume/`, `analysis/`, `rewrite/` split from the start instead of one big `schemas.ts`. It's fine for now. Will revisit if the file crosses 500 lines.
+
+---
+
+## Phase 2 — pdf-service
+
+**When:** after Phase 1 lands on develop
+
+**What I did:**
+- Fastify app on Node 20 (Docker), logs through pino. JSON in prod, pino-pretty in dev — I keep pino-pretty out of the prod image because the transport adds startup cost.
+- `/parse` accepts two input modes: multipart upload (for dev/testing) or `{ r2Key }` JSON body (the production path — web app uploads to R2 with a presigned URL, hands the key over, pdf-service fetches it).
+- Extraction: `pdf-parse` for the raw text, then a hand-rolled heuristic structurer in `structure.ts` that splits by standard section headers (Experience, Education, Skills, Projects, Certifications, Summary with aliases for each) and then parses each block differently.
+- The contact extractor looks at the first ~12 non-empty lines — the email and phone regexes are pretty loose on purpose since resume headers are all over the place.
+- Role header detection uses two heuristics: (a) line contains a date range, (b) line has a `—` / `–` / `|` / `@` separator. If either matches, it's probably a role header not a bullet.
+- Bullet detection covers `-`, `•`, `*`, `·`, `▪`, `‣`, `—`, and numbered lists.
+- `PDF_SERVICE_TOKEN` auth via bearer header with `timingSafeEqual` for comparison. Dev mode warns but allows missing token.
+- Dockerfile: multi-stage build. Runtime image is `node:20-slim` + chromium + the fonts (`fonts-liberation`, `fonts-dejavu-core`, `fonts-noto-cjk`, etc). Added `dumb-init` as entrypoint so puppeteer-spawned chromium doesn't turn into zombie processes under fly.io's default SIGTERM handling.
+- Built a PDF fixture generator using `pdfkit` so tests can round-trip without checked-in binary fixtures.
+
+**Decisions:**
+- Heuristic parser instead of LLM-based parsing. Pros: deterministic, cheap, fast. Cons: fragile on unusual formats. Mitigation: the analysis LLM pass (Phase 5) sees the rawText and can catch anything the heuristic missed. Cost/benefit wins here.
+- `ParsedResumeSchema.parse()` on the way out of `/parse`. If the structurer returns something malformed, the service returns a 500 instead of passing broken data downstream. Catches bugs faster.
+- R2 fetch over buffer upload for production — it's cheaper to hand off a key than to stream bytes through the service twice.
+- Skipped checking-in a binary PDF fixture. Generating PDFs in the test is slower (~100ms startup for pdfkit) but keeps the repo clean and forces the fixture to be readable code.
+- Went with `@aws-sdk/client-s3` for R2 access. R2 is S3-compatible, so the SDK works — just point it at `{accountId}.r2.cloudflarestorage.com`.
+
+**Problems hit:**
+- pdf-parse has a quirky ESM default export. Imported as `import pdfParse from 'pdf-parse'` and it works, but if I ever switch to pure ESM interop I'll have to use `.default`.
+- `noUncheckedIndexedAccess` made `block[i]` access painful in the structurer. Added non-null assertions where I'd actually checked the index. Didn't fight it because the runtime safety is worth the noise.
+- docx@8.6.0 throws a deprecation warning — will bump when I wire up `/render-docx` in phase 7.
+
+**Tests:**
+- 3 tests covering schema conformance, bullet preservation, non-PDF rejection. All passing, ~100ms runtime.
+- Smoke test: booted service, health returned 200, /parse without token in dev mode hit R2 with an invalid key and gave a 500 (correct — bad key path surfaces as server error).
+
+**Commands run:**
+- `pnpm install` (adds pdf-parse, fastify, pino, pino-pretty, pdfkit, docx, @aws-sdk/client-s3, puppeteer-core, tsx)
+- `pnpm --filter @resumerx/pdf-service test` → 3 pass
+- `pnpm --filter @resumerx/pdf-service typecheck` → clean
+- `PORT=3099 pnpm tsx src/index.ts` + `curl /health` → 200 OK
+
+**What I'd do next time:** the structurer is getting big. Should probably pull the regex constants into a `patterns.ts` and split the per-section parsers into their own files. Next refactor.
