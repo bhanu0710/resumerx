@@ -149,3 +149,44 @@ Starting the shared package first, as the spec requires. Data shapes live here, 
 - `PORT=3099 pnpm tsx src/index.ts` + `curl /health` → 200 OK
 
 **What I'd do next time:** the structurer is getting big. Should probably pull the regex constants into a `patterns.ts` and split the per-section parsers into their own files. Next refactor.
+
+---
+
+## Phase 3 — web shell
+
+**When:** after Phase 2
+
+**What I did:**
+- Next.js 14 App Router, TypeScript strict, Tailwind, `next-themes` for dark mode default (light mode toggle via header button).
+- Design references pulled from: Linear (the density and the monospace accent for site name), Vercel's older dashboard (warm orange accent, flat dark bg, dotted grid), Resend's pricing/product pages (tight typography hierarchy, "the deal" counter-positioning section), Cal.com home (how-it-works as numbered-index cards not icon-grid). Implemented all of it in shadcn+Tailwind — no borrowed code.
+- One accent color: warm orange, `hsl(24 100% 55%)`. Saturated enough to be recognizable but not the generic AI-purple.
+- Geist sans + Geist mono via `geist` package. Stylistic alternates (`cv02`, `cv11`) enabled via `font-feature-settings` so numbers and letters have more character.
+- Landing page sections: hero + upload/JD form (split two-column on md+, stacked on mobile); 3-step "how it works" with numbered cards not icons; "what it won't do" — this is the counter-positioning that matters for trust, a 6-bullet list of refusals (no fabricated numbers, no added tools, validator veto etc.).
+- Upload zone: drag + drop, keyboard accessible (Enter/Space triggers picker), size + type validation against `@resumerx/shared` constants, clear remove button, visible error messages in human voice.
+- JD input: char counter, min/max validation against shared constants, gentle destructive state on too-short/too-long. Help text: "skip if you just want ATS feedback."
+- Static pages: `/how-ats-works` renders all 12 rules from `@resumerx/shared/ats-rules` grouped by category — single source of truth pays off here. `/privacy` is a direct, first-person page with what's stored/how long/who sees it. `/not-found` is a plain 404 with back button.
+- Sec headers in `next.config.mjs`: nosniff, DENY framing, strict-origin referrer, locked camera/mic/geo permissions. Baseline security.
+
+**Decisions:**
+- `suppressHydrationWarning` on `<html>` because `next-themes` sets the class attr before hydration. Expected.
+- `dark` as `defaultTheme` with `enableSystem` — dark for people who don't care, system-aware for people who do.
+- Stashed the landing page behaviour (`handleSubmit` just console.logs) because the real upload flow is phase 4. Chose this over leaving a `TODO` because it's honest about the checkpoint boundary.
+- `bg-grid` dotted background instead of a gradient. Gradient heroes are the first sign of "generic AI SaaS."
+- Small `class-variance-authority` Button primitive instead of pulling all of shadcn. Adds what's needed, skips the 40 unused components.
+
+**Problems hit:**
+- Forgot `@radix-ui/react-slot` dep until the typecheck ran — Button's `asChild` needs it. Added to package.json, re-installed.
+- First build complained next-env.d.ts was stale. Next.js rewrites this file on build — added it then let Next overwrite. Fine.
+
+**Tests:**
+- No unit tests for the landing yet — this is pure presentation, will cover e2e in phase 10 with Playwright.
+- Build: `pnpm build` → all 7 routes static-render, first-load JS is 87KB shared + 18.9KB landing = ~106KB. Reasonable.
+- Smoke: started dev server, screenshotted at mobile width — hero + upload zone + JD box render cleanly in dark mode, single orange accent throughout. `/health` returns the stub JSON shape.
+
+**Commands run:**
+- `pnpm install` (added next, react, next-themes, geist, lucide-react, radix slot, class-variance-authority, tailwind, tailwindcss-animate)
+- `pnpm --filter @resumerx/web typecheck` → clean
+- `pnpm --filter @resumerx/web build` → 7 pages static
+- Preview screenshot at 375px width to confirm mobile layout holds
+
+**What I'd do next time:** would have started the upload component with React Hook Form + Zod from the start. It's a plain `useState` right now — fine for a single field but will bloat once I add more form state in phase 4.
