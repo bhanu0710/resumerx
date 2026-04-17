@@ -1,0 +1,11 @@
+# filled out in Phase 12
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "placeholder — real release workflow added in Phase 12"

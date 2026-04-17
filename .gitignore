@@ -1,0 +1,52 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build outputs
+.next/
+dist/
+out/
+build/
+.turbo/
+
+# env files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# infra secrets
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+crash.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# test coverage
+coverage/
+.nyc_output/
+
+# playwright
+playwright-report/
+test-results/
+
+# logs
+*.log
+pino-*.log
+
+# misc
+.vercel
+.fly
+*.pem

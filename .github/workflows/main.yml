@@ -1,0 +1,10 @@
+# filled out in Phase 12
+name: Deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "placeholder — real deploy added in Phase 12"
