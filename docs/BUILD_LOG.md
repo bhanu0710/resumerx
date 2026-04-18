@@ -351,3 +351,37 @@ Files:
 - end-to-end curl flow against localhost:3000 with the pdf-service on 3001, in-memory DB + local fs + Groq stubs
 
 **What I'd do next time:** I'd have caught the tsup bundling issue at build time by wiring `node dist/index.js` into the package's `build` step as a smoke-boot check. 23 KB vs 2.47 MB is also a hint — if a Fastify + pdfkit + docx service compiles to 2 MB of bundled JS, something is being dragged in that shouldn't be. I'll carry that smell forward.
+
+---
+
+## Phase 8 — polish (rate limits, idempotent kickoff, loading + error states) (2026-04-18)
+
+**What I did:**
+- `apps/web/src/server/rate-limit.ts` — per-IP sliding-window limiter, in-memory Map keyed on globalThis so it survives Next dev module re-eval. `check(key, limit, windowMs)` returns `{ ok, retryAfterSec, ... }`. IP is read from `x-forwarded-for` / `x-real-ip` / `cf-connecting-ip`, falls back to `"local"`. Limits: upload-url 20/min, analyze 6/min, rewrite 4/min.
+- Wired the limiter into `/api/upload-url`, `/api/analyze`, `/api/rewrite`. 429 responses include a `retry-after` header and `retryAfterSec` in the body.
+- Idempotent rewrite kickoff: added `findRewriteByAnalysisId()` to the Store (pg via drizzle `eq`, memory via linear scan — memory store is only used in dev so N is tiny). `/r/[id]/rewrite` checks for an existing rewrite before running `runRewrite()` and redirects to the existing `/rw/<id>`. Confirmed in preview: second hit on the same kickoff URL takes 15-170ms vs 680ms for the first, and the `<id>` is stable across hits.
+- `loading.tsx` for `/r/[id]/rewrite` — "rewriting · working through your bullets · takes 10–30s, don't refresh" with an animated dot. Streams while the server component runs `runRewrite()`.
+- `error.tsx` for `/r/[id]`, `/r/[id]/rewrite`, `/rw/[id]` — client components (required by App Router's error boundary) with a "try again" button wired to `reset()` and a "start over" link. Shows `error.digest` so a user reporting the issue can quote a ref.
+- Client-side 429 handling on the landing page: upload-url and analyze fetches check for 429 and surface "Too many uploads/analyses — try again in Ns." in the existing error banner instead of the raw status.
+
+**Decisions:**
+- **In-memory, single-instance rate limiter for now.** Everything else in this app is still single-instance (in-memory store, local fs, single Next process). When I move to horizontal scale in phase 13, I'll swap this for Upstash Redis keeping the same `check()` shape — the route-handler wiring doesn't change.
+- **Rate limits are tight on LLM endpoints** (6/min analyze, 4/min rewrite). The math: a single rewrite can fire 20-40 bullets × 2 LLM calls at Groq's free-tier limits. 4 rewrites/min per IP means at most 320 Groq calls/min from one abuser, which is under Groq's per-key rate limit. upload-url is loose (20/min) because it's cheap and retries are legit.
+- **Idempotent kickoff keyed on analysisId, not a dedup query param.** Users don't think in terms of "send this request idempotently" — they hit refresh. One rewrite per analysis is the right invariant. If they want to re-rewrite, they can run a new analysis first (the existing rewrite still exists for the old one).
+- **notFound() in server components + loading.tsx → 200 streaming, not 404.** Caught this in preview: `GET /r/missing/rewrite` returns 200 because Next streams loading.tsx first, then injects the not-found UI. Browser users see the not-found page correctly; curl users see a 200 envelope with 404-UI inside. Acceptable — we're not an API for 404 semantics on that path. The `/r/missing` and `/rw/missing` pages don't have loading states and do return 404 cleanly.
+
+**Problems hit:**
+- **TS narrowing on the `Bucket` type** — `buckets.get(key) ?? { hits: [] }` inferred `never[]` for the literal branch, which broke the `filter((t) => t > cutoff)` callback. Annotated the local as `Bucket` to force the widening.
+- **Streaming + redirect**: `redirect()` in a server component that has a `loading.tsx` sibling produces an RSC payload with a redirect instruction rather than a plain HTTP 3xx. Curl's `-L` doesn't follow it. Had to inspect the response body to confirm the intended rewrite id. Browser navigation handles it correctly.
+
+**Tests:**
+- `pnpm --filter @resumerx/web exec tsc --noEmit` → clean.
+- `pnpm build` → all 3 packages green. No new routes (existing ones gained rate-limit + idempotent guard).
+- Preview: ran the full upload → analyze → rewrite flow, hit `/r/<aid>/rewrite` twice and got the same `rw/<rid>` in both responses (first 680ms, second 170ms). Burst-fired 10 rewrite POSTs with a bogus analysisId — first 4 returned 404 (rate-limit passes, resolves to analysis_not_found), 5–10 returned 429 with `retry-after: 53` and `{ error: "rate_limited", retryAfterSec: 53 }`. 404 pages for `/r/missing` and `/rw/missing` render correctly.
+
+**Commands run:**
+- `pnpm --filter @resumerx/web exec tsc --noEmit`
+- `pnpm build`
+- Burst curl against `/api/rewrite` to verify limiter; double-hit `/r/<id>/rewrite` to verify idempotent kickoff.
+
+**What I'd do next time:** I'd build the rate-limit client and error boundaries alongside the routes in phase 4/5/6 instead of retrofitting a phase later. The wiring is cheap once the helper exists; most of the time sink here was re-running the full preview flow three times to confirm the 429 + retry-after shape and the streaming-redirect behavior. A test that walks the same flow (phase 10) will pay for itself on every future change.
