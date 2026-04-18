@@ -237,3 +237,41 @@ Landing-page wiring: replaced the `console.log` stub with the real three-step fl
 - `pnpm --filter @resumerx/web build`
 
 **What I'd do next time:** would have defined the `Store` interface during Phase 1 in `@resumerx/shared`, not inside `apps/web`. The interface is app-agnostic and the memory fallback could live there too. Not moving it now — dep graph is clean as-is.
+
+---
+
+## Phase 5 — Analysis (Groq call + real results page)
+
+**When:** Apr 18 2026, same day as Phase 4.
+
+**What I did:** replaced the zeroed stub analysis with a real one. New `runAnalysis()` in `apps/web/src/server/analyze.ts` builds the prompt from the parsed resume + JD + `ATS_RULES`, calls Groq (llama-3.3-70b-versatile), validates the response against `AnalysisLLMSchema`, and returns the analysis plus timing/token telemetry for phase 9's audit log.
+
+Files:
+- `apps/web/src/server/groq.ts` — thin wrapper over Groq's OpenAI-compatible endpoint. No SDK. Returns content + model + tokens + latency. Throws `GroqError` on non-2xx.
+- `apps/web/src/server/analyze.ts` — prompt builder + `runAnalysis()`. Includes a heuristic stub (`stubAnalysisFromHeuristics`) that runs when `GROQ_API_KEY` is absent, so the dev flow still renders something believable locally.
+- `apps/web/src/app/api/analyze/route.ts` — now calls `runAnalysis()` inline, returns `{ analysisId, resumeId, usedStub }`.
+- `apps/web/src/app/r/[id]/page.tsx` — full rewrite. Three score cards (overall / ATS / keyword), matched-vs-missing keyword panels, ATS issues list with severity icons + fix copy, per-section feedback cards with strengths/weaknesses/suggestions. CTA links to `/r/[id]/rewrite` (lands in phase 6).
+
+**Decisions:**
+- **No SSE yet.** Spec calls for it on long-running analyze, but a single Groq call at llama-3.3-70b is 3-8s — inline is fine, and the button already says "analyzing…". SSE polish deferred to phase 8 where it'll genuinely matter for the bullet-by-bullet rewrite stream.
+- **Heuristic fallback instead of "set GROQ_API_KEY" error.** Same rationale as the in-memory DB: local dev flow should run end-to-end without creds. The fallback stamps a banner issue ("Dev mode fallback analysis · Set GROQ_API_KEY to get the real LLM analysis") so it's never mistaken for real output.
+- **ATS rules feed the system prompt verbatim.** `ATS_RULES` is already the single source of truth for `/how-ats-works`. Formatting the same array into the prompt means the tool scores against the rules the user reads — no drift.
+- **Validate LLM output at the boundary.** `AnalysisLLMSchema.parse()` on the raw JSON, stamp `id` and `createdAt` server-side. The model controls shape only; identity and time are ours.
+- **`response_format: json_object`** plus a defensive markdown-fence strip. Groq's JSON mode is reliable but sometimes a model still wraps in ```json — cheap belt-and-braces.
+- **Compact the resume for the prompt.** Experience/projects/education/skills formatted as tight text, not the raw PDF text field. `rawText` would burn 2k tokens on whitespace before saying anything.
+
+**Problems hit:**
+- Typecheck failed: `ATS_RULES` isn't on the main `@resumerx/shared` entrypoint, it's exported from `@resumerx/shared/ats-rules` (the subpath was set up in phase 1 to keep client bundles thin). Switched to `import { ATS_RULES } from '@resumerx/shared/ats-rules'`. Needed a `pnpm --filter @resumerx/shared build` first so the subpath types existed in `dist/`.
+
+**Tests:**
+- None added this phase — the full prompt + Groq path lands in phase 10's validator-safety test, which needs real e2e fixtures. Noted.
+- `pnpm --filter @resumerx/web typecheck` → clean after the subpath import fix.
+- `pnpm --filter @resumerx/web build` → all routes build. Same static/dynamic split as phase 4. `/r/[id]` still dynamic.
+- Manual: will walk the flow via preview in a moment.
+
+**Commands run:**
+- `pnpm --filter @resumerx/shared build`
+- `pnpm --filter @resumerx/web typecheck`
+- `pnpm --filter @resumerx/web build`
+
+**What I'd do next time:** would have designed the LLM-call + audit-log write as one wrapper from the start (`withLLMAudit(purpose, fn)`) so every call site records tokens/latency without remembering. As-is, `runAnalysis` returns the telemetry and the route throws it away — `llm_calls` table is empty until phase 9 wires it up.
