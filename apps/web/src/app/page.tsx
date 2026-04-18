@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, Check, FileText, Wand2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UploadZone } from '@/components/upload-zone';
@@ -9,21 +10,55 @@ import { JdInput } from '@/components/jd-input';
 import { JD_MIN_LENGTH } from '@resumerx/shared';
 
 export default function LandingPage() {
+  const router = useRouter();
   const [file, setFile] = React.useState<File | null>(null);
   const [jd, setJd] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const canSubmit =
-    file !== null && !submitting && (jd.length === 0 || jd.length >= JD_MIN_LENGTH);
+    file !== null && !submitting && jd.length >= JD_MIN_LENGTH;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || !file) return;
     setSubmitting(true);
-    // wiring lives in phase 4 — for now, just visible feedback
-    // eslint-disable-next-line no-console
-    console.log('submit', { file, jd });
-    setTimeout(() => setSubmitting(false), 800);
+    setError(null);
+    try {
+      const presignRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || 'application/pdf',
+          size: file.size,
+        }),
+      });
+      if (!presignRes.ok) throw new Error(`upload-url ${presignRes.status}`);
+      const { resumeId, uploadUrl } = await presignRes.json();
+
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'content-type': file.type || 'application/pdf' },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error(`upload ${putRes.status}`);
+
+      const analyzeRes = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resumeId, jobDescription: jd }),
+      });
+      if (!analyzeRes.ok) {
+        const body = await analyzeRes.json().catch(() => ({}));
+        throw new Error(body.detail || `analyze ${analyzeRes.status}`);
+      }
+      const { analysisId } = await analyzeRes.json();
+      router.push(`/r/${analysisId}`);
+    } catch (err) {
+      setError((err as Error).message);
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -68,6 +103,11 @@ export default function LandingPage() {
               {submitting ? 'analyzing…' : 'analyze my resume'}
               {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
             </Button>
+            {error && (
+              <p className="text-center text-xs text-destructive" role="alert">
+                {error}
+              </p>
+            )}
             <p className="text-center text-xs text-muted-foreground">
               free · no signup · resume stays on R2 for 24h, then gone
             </p>
