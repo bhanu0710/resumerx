@@ -443,3 +443,40 @@ Files:
 - `pnpm --filter @resumerx/web exec tsc --noEmit` clean.
 
 **What I'd do next time:** I'd have added the vitest config alongside the first web file that needed it in phase 5, instead of backfilling it here. The shim-for-server-only trick is the kind of thing you discover once and forget, so writing it down: alias `server-only` to an empty module in vitest config.
+
+---
+
+## Phase 11 — Terraform modules
+
+**When:** Apr 18 2026
+
+**What I wanted:** Infrastructure as code for the providers the app actually touches, with a clear stop point before anything gets applied. No click-ops, no secrets in main.tf, one plan per environment.
+
+**Scope:**
+- Four modules: `cloudflare` (R2 bucket), `neon` (pooled Postgres), `upstash` (redis for future rate-limit), `vercel` (project + env vars).
+- Two environments: `staging` (tracks develop) and `production` (tracks main).
+- Fly.io intentionally excluded from TF — `flyctl deploy` in CI owns the pdf-service lifecycle. Module dir keeps a README explaining why so future-me doesn't wonder.
+
+**Decisions I made on the way:**
+- Using `neon_project.this.connection_uri` directly instead of hand-rolling a URI from role + host. The provider already handles password rotation through that output, and the custom role I was going to create would just duplicate what Neon creates by default. One fewer resource to manage.
+- Cloudflare v4 provider doesn't expose R2 CORS as a resource. Rather than upgrade to v5 (breaking elsewhere), I documented the one-shot `wrangler r2 bucket cors put` step in the README. Manual, but post-apply CORS changes are a once-a-year thing.
+- Terraform Cloud remote backend for shared state. Commented-out fallback note in the README for solo bootstrap with local state.
+- Two separate environment dirs instead of workspaces. Same modules, different tfvars. Easier to reason about what changed in a PR diff than fighting workspace-scoped variables.
+
+**Checks:**
+- `terraform fmt -recursive` clean.
+- `terraform init -backend=false && terraform validate` passes for both environments.
+
+**What's NOT done:** No `apply`. That needs real accounts for Cloudflare, Neon, Upstash, Vercel, Groq, Sentry, and a Terraform Cloud org. Checklist to unblock phase 13:
+
+1. Cloudflare account + R2 API token (access key + secret, TF can't mint those) + account-scoped API token for the provider.
+2. Neon account + personal API key.
+3. Upstash account + API key.
+4. Vercel account + token (team optional).
+5. Groq API key.
+6. Sentry org + project DSN.
+7. Terraform Cloud org named `resumerx` with `staging` + `production` workspaces, or flip to local state.
+
+**What I'd do next time:** I'd have picked the provider versions by first checking which resources each one actually exposes, instead of writing the module and then discovering `cloudflare_r2_bucket_cors` doesn't exist in v4. Lost 10 minutes to that. The rule: for new providers, start with `terraform registry` docs open, not from memory.
+
+**Pausing here.** Will not run `apply` until the user has populated real credentials and confirmed.
