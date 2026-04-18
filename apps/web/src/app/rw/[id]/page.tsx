@@ -68,6 +68,60 @@ export default async function RewritePage({ params }: { params: { id: string } }
       )}
 
       <RewriteDiff rewriteId={r.id} bullets={r.bullets} accepted={row.acceptedBullets ?? {}} />
+
+      {r.sectionRewrites && (r.sectionRewrites.summary || r.sectionRewrites.skills) && (
+        <section className="mt-10 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">summary & skills — industry voice</h2>
+            {r.sectionRewrites.industryInferred && (
+              <p className="text-muted-foreground mt-1 text-sm">
+                inferred industry: <span className="text-foreground">{r.sectionRewrites.industryInferred}</span>
+                {r.sectionRewrites.referenceCompanies?.length ? (
+                  <> · reference companies: <span className="text-foreground">{r.sectionRewrites.referenceCompanies.join(', ')}</span></>
+                ) : null}
+              </p>
+            )}
+          </div>
+          {r.sectionRewrites.summary && (
+            <div className="border-border rounded-lg border p-4">
+              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">summary</p>
+              <p className="text-muted-foreground mt-2 text-sm line-through">{r.sectionRewrites.summary.original || '(empty)'}</p>
+              <p className="mt-2 text-sm">{r.sectionRewrites.summary.rewritten}</p>
+              <p className="text-muted-foreground mt-2 text-xs italic">{r.sectionRewrites.summary.reasoning}</p>
+            </div>
+          )}
+          {r.sectionRewrites.skills && (
+            <div className="border-border rounded-lg border p-4">
+              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">skills</p>
+              <p className="text-muted-foreground mt-2 text-sm line-through">{r.sectionRewrites.skills.original.join(', ') || '(empty)'}</p>
+              <p className="mt-2 text-sm">{r.sectionRewrites.skills.rewritten.join(', ')}</p>
+              <p className="text-muted-foreground mt-2 text-xs italic">{r.sectionRewrites.skills.reasoning}</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {r.finalReview && r.finalReview.items.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-xl font-semibold tracking-tight">final polish</h2>
+          {r.finalReview.overallNote && (
+            <p className="text-muted-foreground mt-1 text-sm">{r.finalReview.overallNote}</p>
+          )}
+          <ul className="mt-4 space-y-3">
+            {r.finalReview.items.map((item, i) => (
+              <li key={i} className="border-border rounded-lg border p-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="border-border rounded-md border px-2 py-0.5 font-mono uppercase">{item.issue.replace('_', ' ')}</span>
+                  <span className="text-muted-foreground">{item.location}</span>
+                </div>
+                <p className="text-muted-foreground mt-2 text-sm line-through">{item.original}</p>
+                <p className="mt-1 text-sm">{item.replacement}</p>
+                <p className="text-muted-foreground mt-2 text-xs italic">{item.reason}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

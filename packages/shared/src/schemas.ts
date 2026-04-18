@@ -153,10 +153,47 @@ export const BulletRewriteSchema = z.object({
 });
 export type BulletRewrite = z.infer<typeof BulletRewriteSchema>;
 
+export const SectionRewriteSchema = z.object({
+  summary: z
+    .object({
+      original: z.string(),
+      rewritten: z.string(),
+      reasoning: z.string(),
+    })
+    .optional(),
+  skills: z
+    .object({
+      original: z.array(z.string()),
+      rewritten: z.array(z.string()),
+      reasoning: z.string(),
+    })
+    .optional(),
+  industryInferred: z.string().optional(),
+  referenceCompanies: z.array(z.string()).optional(),
+});
+export type SectionRewrite = z.infer<typeof SectionRewriteSchema>;
+
+export const FinalReviewItemSchema = z.object({
+  location: z.string(),
+  issue: z.enum(['cliche', 'generic', 'tense_inconsistency', 'weak_verb', 'buzzword']),
+  original: z.string(),
+  replacement: z.string(),
+  reason: z.string(),
+});
+export type FinalReviewItem = z.infer<typeof FinalReviewItemSchema>;
+
+export const FinalReviewSchema = z.object({
+  items: z.array(FinalReviewItemSchema),
+  overallNote: z.string().optional(),
+});
+export type FinalReview = z.infer<typeof FinalReviewSchema>;
+
 export const RewriteResultSchema = z.object({
   id: z.string(),
   analysisId: z.string(),
   bullets: z.array(BulletRewriteSchema),
+  sectionRewrites: SectionRewriteSchema.optional(),
+  finalReview: FinalReviewSchema.optional(),
   summary: z.object({
     totalBullets: z.number(),
     rewritten: z.number(),

@@ -8,7 +8,12 @@ import { logger } from './logger';
 // Used for cost accounting, latency tracking, and (eventually) a dashboard
 // that shows which validator rules trip most.
 
-export type LlmPurpose = 'analyze' | 'rewrite_bullet' | 'validate';
+export type LlmPurpose =
+  | 'analyze'
+  | 'rewrite_bullet'
+  | 'rewrite_sections'
+  | 'final_review'
+  | 'validate';
 
 export interface LlmCallInput {
   purpose: LlmPurpose;

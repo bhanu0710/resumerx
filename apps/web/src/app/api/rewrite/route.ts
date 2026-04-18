@@ -50,6 +50,7 @@ export async function POST(req: Request) {
       analysisId: body.analysisId,
       parsed: resume.parsed,
       jdKeywords,
+      jobDescription: analysis.jobDescription,
       bulletIds: body.bulletIds,
     });
   } catch (err) {
