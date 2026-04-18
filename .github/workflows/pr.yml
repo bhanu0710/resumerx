@@ -1,10 +1,64 @@
-# filled out in Phase 12
 name: PR checks
+
 on:
   pull_request:
     branches: [main, develop]
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  placeholder:
+  node:
+    name: lint, typecheck, test, build
     runs-on: ubuntu-latest
     steps:
-      - run: echo "placeholder — real checks added in Phase 12"
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: prettier
+        run: pnpm format:check
+
+      - name: lint
+        run: pnpm lint
+
+      - name: typecheck
+        run: pnpm -r run typecheck
+
+      - name: test
+        run: pnpm test
+
+      - name: build
+        run: pnpm build
+
+  terraform:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+      - name: fmt
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+      - name: validate staging
+        working-directory: infra/terraform/environments/staging
+        run: |
+          terraform init -backend=false
+          terraform validate
+      - name: validate production
+        working-directory: infra/terraform/environments/production
+        run: |
+          terraform init -backend=false
+          terraform validate
