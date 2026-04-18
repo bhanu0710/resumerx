@@ -5,6 +5,7 @@ import { UPLOAD_MAX_BYTES, ParsedResumeSchema } from '@resumerx/shared';
 import { parsePdfBuffer } from './parse.js';
 import { fetchR2Object } from './r2.js';
 import { requireToken } from './auth.js';
+import { renderPdf, renderDocx, applyAccepted } from './render.js';
 
 const PORT = Number.parseInt(process.env.PORT ?? '3001', 10);
 
@@ -69,13 +70,49 @@ app.post('/parse', { preHandler: requireToken }, async (req, reply) => {
   }
 });
 
-// /render-pdf and /render-docx stubbed — filled in Phase 7
-app.post('/render-pdf', { preHandler: requireToken }, async (_req, reply) => {
-  return reply.code(501).send({ error: 'not implemented yet — phase 7' });
+// /render-pdf and /render-docx — accept { resume: ParsedResume, accepted?: Record<string,string> }
+const RenderBodySchema = z.object({
+  resume: ParsedResumeSchema,
+  accepted: z.record(z.string()).optional(),
 });
 
-app.post('/render-docx', { preHandler: requireToken }, async (_req, reply) => {
-  return reply.code(501).send({ error: 'not implemented yet — phase 7' });
+app.post('/render-pdf', { preHandler: requireToken }, async (req, reply) => {
+  const parsed = RenderBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid body', detail: parsed.error.flatten() });
+  }
+  try {
+    const merged = applyAccepted(parsed.data.resume, parsed.data.accepted);
+    const buf = await renderPdf(merged);
+    return reply
+      .header('content-type', 'application/pdf')
+      .header('content-disposition', 'attachment; filename="resume.pdf"')
+      .send(buf);
+  } catch (err) {
+    req.log.error({ err }, 'render-pdf failed');
+    return reply.code(500).send({ error: (err as Error).message });
+  }
+});
+
+app.post('/render-docx', { preHandler: requireToken }, async (req, reply) => {
+  const parsed = RenderBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid body', detail: parsed.error.flatten() });
+  }
+  try {
+    const merged = applyAccepted(parsed.data.resume, parsed.data.accepted);
+    const buf = await renderDocx(merged);
+    return reply
+      .header(
+        'content-type',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      )
+      .header('content-disposition', 'attachment; filename="resume.docx"')
+      .send(buf);
+  } catch (err) {
+    req.log.error({ err }, 'render-docx failed');
+    return reply.code(500).send({ error: (err as Error).message });
+  }
 });
 
 try {
