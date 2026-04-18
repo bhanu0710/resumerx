@@ -1,10 +1,49 @@
-# filled out in Phase 12
-name: Deploy
+name: Deploy pdf-service
+
+# Vercel's git integration handles web deploys automatically on push to
+# develop (staging) and main (production). This workflow only owns the
+# pdf-service sidecar on Fly — Vercel is intentionally not touched here.
+
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
+    paths:
+      - 'apps/pdf-service/**'
+      - 'packages/shared/**'
+      - '.github/workflows/main.yml'
+
+concurrency:
+  group: deploy-pdf-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  placeholder:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "placeholder — real deploy added in Phase 12"
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @resumerx/pdf-service test
+      - run: pnpm --filter @resumerx/pdf-service build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: deploy (${{ github.ref_name }})
+        working-directory: apps/pdf-service
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            flyctl deploy --remote-only --app resumerx-pdf-prod
+          else
+            flyctl deploy --remote-only --app resumerx-pdf-staging
+          fi
