@@ -190,3 +190,50 @@ Starting the shared package first, as the spec requires. Data shapes live here, 
 - Preview screenshot at 375px width to confirm mobile layout holds
 
 **What I'd do next time:** would have started the upload component with React Hook Form + Zod from the start. It's a plain `useState` right now — fine for a single field but will bloat once I add more form state in phase 4.
+
+---
+
+## Phase 4 — Upload + parse flow end-to-end
+
+**When:** Apr 18 2026, continued from Phase 3 checkpoint.
+
+**What I did:** wired the landing form through to a real analysis id. The full path now runs: browser → `/api/upload-url` → PUT bytes to R2 (or local fs in dev) → `/api/analyze` → pdf-service `/parse` → Drizzle insert → redirect to `/r/[id]`. Phase 5 fills in the actual LLM analysis — for now the analysis row gets a zero-score stub so the results page has a row to render.
+
+Files added under `apps/web/src/server/`:
+- `env.ts` — centralized env with `required`/`optional` helpers, dev fallback flags (`useInMemory`, `useLocalFs`), and a one-time warning when fallbacks fire. Skip the prod-required check during `next build`'s page-data collection phase (`NEXT_PHASE === 'phase-production-build'`) so the build doesn't need real creds.
+- `db-schema.ts` — Drizzle pgTable for `resumes`, `analyses`, `rewrites`, `llm_calls`. jsonb columns typed with `$type<ParsedResume>()` so Drizzle returns the right TS shape. Indexes on `expires_at` for the phase-8 cleanup cron.
+- `db.ts` — `Store` interface with `makePgStore()` (pg Pool + drizzle) and `makeMemoryStore()` (plain `Map`). Lazy singleton. In-memory fallback means I can run the whole flow locally without Neon.
+- `storage.ts` — `Storage` interface with `makeR2Storage()` (presigned PUT via `@aws-sdk/s3-request-presigner`) and `makeLocalStorage()` that points at `/tmp/resumerx-dev` + a `/api/dev-upload` sink route. Presigned URL TTL lives in shared constants.
+- `pdf-service.ts` — typed client for `POST /parse`. Auth header via `PDF_SERVICE_TOKEN`. Parses the response through `ParsedResumeSchema` at the boundary so downstream code trusts the type.
+
+Routes:
+- `POST /api/upload-url` — validates `{ filename, contentType, size }` with zod, mints a `resumeId`, returns the presigned upload URL.
+- `PUT /api/dev-upload` — dev-only sink. 404s in prod. Browser uses this when `useLocalFs` is on.
+- `POST /api/analyze` — accepts `{ resumeId, jobDescription }`, pulls the bytes from storage, hits pdf-service, persists `ParsedResume`, writes a stub `Analysis`, returns `{ analysisId }`.
+- `GET /r/[id]` — minimal results page. Shows parsed name/email/role count/projects/skills, with a banner that the full analysis UI lands in phase 5. The landing-page "see an example" link (`/r/example`) still works — special-cased.
+
+Landing-page wiring: replaced the `console.log` stub with the real three-step flow. Relaxed the "JD optional" rule — decided to require JD ≥ 50 chars at submit time since a keyword match with no JD is meaningless. Surfaces a small error line under the button if any step fails.
+
+**Decisions:**
+- **In-memory `Map` as the dev DB fallback, not SQLite.** Drizzle's schema doesn't duck-type cleanly across dialects (pg-specific `jsonb`, `withTimezone` timestamps) and I didn't want a second schema file. The `Store` interface keeps the rest of the code dialect-free.
+- **Presigned PUT to R2 in prod, local PUT route in dev.** Browser code doesn't branch — it just PUTs to whatever URL came back from `/api/upload-url`. The difference is only where the bytes land.
+- **Stub the `Analysis` row now, fill it in phase 5.** Keeps the schema honest and the results route real instead of `/api/analyze` returning a fake id that doesn't persist anything.
+- **Validate at the boundary in `pdf-service.ts`.** The service already validates on its side, but re-parsing with `ParsedResumeSchema` here means any future drift surfaces as a 502 at the edge instead of a weird runtime error deep in a server component.
+- **`maxDuration = 60` on `/api/analyze`.** Parse can be a few seconds on large PDFs; the LLM call in phase 5 adds more. 60s buffer leaves room without going all-in on 300s limits.
+
+**Problems hit:**
+- `next build` crashed on `DATABASE_URL is required in production` because it evaluates server modules during page-data collection, and `env.ts` throws at import time. Fixed by short-circuiting the prod-required check when `NEXT_PHASE === 'phase-production-build'`. The throw still fires at real runtime.
+- Node's `Buffer` types don't satisfy `BlobPart` under strict lib types (SharedArrayBuffer union). Copied bytes into a fresh `ArrayBuffer` before wrapping in `Blob` — ugly but typesafe, and the copy is negligible next to the network hop.
+- Originally had `jd.length === 0 || jd.length >= JD_MIN_LENGTH` on the submit gate — kept from Phase 3 when I was undecided. Tightened to require ≥ 50 since "analyze without a JD" isn't a real mode in this app.
+
+**Tests:**
+- No new unit tests this phase — the routes are wiring, and the real assertions live in phase 10's e2e (upload fixture PDF, expect redirect to `/r/[id]`, expect parsed fields visible). Called out in the phase 10 todo.
+- `pnpm --filter @resumerx/web typecheck` → clean after the Buffer/BlobPart fix.
+- `pnpm --filter @resumerx/web build` → all routes build, `/api/upload-url`, `/api/analyze`, `/api/dev-upload` listed as dynamic, `/r/[id]` dynamic. Static routes unchanged.
+
+**Commands run:**
+- `pnpm install --filter @resumerx/web` (added `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`, `drizzle-orm`, `pg`; dev: `@types/pg`, `drizzle-kit`)
+- `pnpm --filter @resumerx/web typecheck`
+- `pnpm --filter @resumerx/web build`
+
+**What I'd do next time:** would have defined the `Store` interface during Phase 1 in `@resumerx/shared`, not inside `apps/web`. The interface is app-agnostic and the memory fallback could live there too. Not moving it now — dep graph is clean as-is.
