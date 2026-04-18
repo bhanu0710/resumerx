@@ -136,10 +136,14 @@ function makeMemoryStore(): Store {
   };
 }
 
-// lazy singleton — don't connect to pg at module load
-let _store: Store | null = null;
+// lazy singleton — don't connect to pg at module load.
+// Stash on globalThis so Next.js app-router server modules that get re-evaluated
+// across route graphs still share the same Map / Pool.
+type GlobalWithStore = typeof globalThis & { __resumerxStore?: Store };
+const g = globalThis as GlobalWithStore;
+
 export function getStore(): Store {
-  if (_store) return _store;
-  _store = env.db.useInMemory ? makeMemoryStore() : makePgStore();
-  return _store;
+  if (g.__resumerxStore) return g.__resumerxStore;
+  g.__resumerxStore = env.db.useInMemory ? makeMemoryStore() : makePgStore();
+  return g.__resumerxStore;
 }
