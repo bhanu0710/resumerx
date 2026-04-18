@@ -54,6 +54,31 @@ export async function GET(req: Request, { params }: { params: { rewriteId: strin
     merged.skills = { ...merged.skills, technical: sr.skills.rewritten };
   }
 
+  // Final review items are literal-substring fixes (cliché → replacement, weak
+  // verb → strong verb, etc). Apply them across summary, accepted bullets, and
+  // skills so the download mirrors exactly what the review pane showed.
+  const reviewItems = rewrite.result.finalReview?.items ?? [];
+  const applyReview = (text: string): string => {
+    let out = text;
+    for (const it of reviewItems) {
+      if (!it.original || it.original === it.replacement) continue;
+      if (out.includes(it.original)) out = out.split(it.original).join(it.replacement);
+    }
+    return out;
+  };
+  if (reviewItems.length > 0) {
+    if (merged.summary) merged.summary = applyReview(merged.summary);
+    merged.skills = {
+      ...merged.skills,
+      technical: merged.skills.technical.map(applyReview),
+      tools: merged.skills.tools?.map(applyReview),
+      soft: merged.skills.soft?.map(applyReview),
+    };
+    for (const k of Object.keys(accepted)) {
+      accepted[k] = applyReview(accepted[k]);
+    }
+  }
+
   try {
     const { bytes, contentType } = await renderResume(merged, accepted, format);
     const ab = new ArrayBuffer(bytes.byteLength);
