@@ -42,8 +42,20 @@ export async function GET(req: Request, { params }: { params: { rewriteId: strin
       b.rewritten !== b.original && b.validation.passed ? b.rewritten : b.original;
   }
 
+  // pdf-service /render only applies `accepted` to bullets. summary + skills
+  // rewrites live on rewrite.result.sectionRewrites — merge them into the resume
+  // we send to the renderer so the download reflects every rewrite, not just bullets.
+  const merged = { ...resume.parsed };
+  const sr = rewrite.result.sectionRewrites;
+  if (sr?.summary?.rewritten) {
+    merged.summary = sr.summary.rewritten;
+  }
+  if (sr?.skills?.rewritten?.length) {
+    merged.skills = { ...merged.skills, technical: sr.skills.rewritten };
+  }
+
   try {
-    const { bytes, contentType } = await renderResume(resume.parsed, accepted, format);
+    const { bytes, contentType } = await renderResume(merged, accepted, format);
     const ab = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(ab).set(bytes);
     return new NextResponse(ab, {
