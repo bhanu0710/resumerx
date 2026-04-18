@@ -1,0 +1,23 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Every *_api_token / *_api_key
+# here is a secret — rotate if it ever lands in a commit.
+
+cloudflare_api_token   = "..."
+cloudflare_account_id  = "..."
+r2_access_key_id       = "..."
+r2_secret_access_key   = "..."
+
+neon_api_key           = "..."
+
+upstash_email          = "you@example.com"
+upstash_api_key        = "..."
+
+vercel_api_token       = "..."
+git_repo               = "bhanu0710/resumerx"
+
+groq_api_key           = "gsk_..."
+
+pdf_service_url        = "https://resumerx-pdf-staging.fly.dev"
+pdf_service_token      = "..."
+
+sentry_dsn             = "https://...@o0.ingest.sentry.io/0"
+app_url                = "https://resumerx-staging.vercel.app"
