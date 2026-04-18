@@ -9,6 +9,8 @@ import { getStorage, resumeKey } from '@/server/storage';
 import { parsePdfBytes, PdfServiceError } from '@/server/pdf-service';
 import { runAnalysis } from '@/server/analyze';
 import { check, ipOf, LIMITS } from '@/server/rate-limit';
+import { forRequest } from '@/server/logger';
+import { captureError } from '@/server/sentry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -16,6 +18,8 @@ export const maxDuration = 60;
 const TTL_MS = ARTIFACT_TTL_HOURS * 60 * 60 * 1000;
 
 export async function POST(req: Request) {
+  const log = forRequest(req);
+  const started = Date.now();
   const rl = check(`analyze:${ipOf(req)}`, LIMITS.analyze.limit, LIMITS.analyze.windowMs);
   if (!rl.ok) {
     return NextResponse.json(
@@ -78,6 +82,8 @@ export async function POST(req: Request) {
       jobDescription: body.jobDescription,
     });
   } catch (err) {
+    log.error({ err }, 'analysis_failed');
+    captureError(err, { route: 'analyze', resumeId: body.resumeId });
     return NextResponse.json(
       { error: 'analysis_failed', detail: (err as Error).message },
       { status: 502 },
@@ -92,6 +98,10 @@ export async function POST(req: Request) {
     ttlMs: TTL_MS,
   });
 
+  log.info(
+    { analysisId: id, resumeId: body.resumeId, usedStub: analysisOut.usedStub, ms: Date.now() - started },
+    'analyze ok',
+  );
   return NextResponse.json({
     analysisId: id,
     resumeId: body.resumeId,

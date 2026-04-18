@@ -3,6 +3,8 @@ import { RewriteRequestSchema, ARTIFACT_TTL_HOURS } from '@resumerx/shared';
 import { getStore } from '@/server/db';
 import { runRewrite, selectJdKeywords } from '@/server/rewrite';
 import { check, ipOf, LIMITS } from '@/server/rate-limit';
+import { forRequest } from '@/server/logger';
+import { captureError } from '@/server/sentry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -10,6 +12,8 @@ export const maxDuration = 300;
 const TTL_MS = ARTIFACT_TTL_HOURS * 60 * 60 * 1000;
 
 export async function POST(req: Request) {
+  const log = forRequest(req);
+  const started = Date.now();
   const rl = check(`rewrite:${ipOf(req)}`, LIMITS.rewrite.limit, LIMITS.rewrite.windowMs);
   if (!rl.ok) {
     return NextResponse.json(
@@ -49,6 +53,8 @@ export async function POST(req: Request) {
       bulletIds: body.bulletIds,
     });
   } catch (err) {
+    log.error({ err, analysisId: body.analysisId }, 'rewrite_failed');
+    captureError(err, { route: 'rewrite', analysisId: body.analysisId });
     return NextResponse.json(
       { error: 'rewrite_failed', detail: (err as Error).message },
       { status: 502 },
@@ -62,5 +68,16 @@ export async function POST(req: Request) {
     ttlMs: TTL_MS,
   });
 
+  log.info(
+    {
+      rewriteId: result.id,
+      analysisId: body.analysisId,
+      total: result.summary.totalBullets,
+      rewritten: result.summary.rewritten,
+      flagged: result.summary.flagged,
+      ms: Date.now() - started,
+    },
+    'rewrite ok',
+  );
   return NextResponse.json({ rewriteId: result.id, summary: result.summary });
 }
