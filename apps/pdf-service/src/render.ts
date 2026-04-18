@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+import { Document, Packer, Paragraph, TextRun, AlignmentType, TabStopType } from 'docx';
 import type { ParsedResume } from '@resumerx/shared';
 
 // Apply the user's per-bullet choices to the parsed resume before rendering.
@@ -24,88 +24,129 @@ export function applyAccepted(
 }
 
 // --- PDF (pdfkit) --------------------------------------------------------
+// layout rules this renderer enforces:
+//   - letter paper, 0.6" margins (more content, still ats-safe)
+//   - one column (two-column resumes get mangled by 40% of ats scanners)
+//   - name BIG and centered, contact one line below in muted grey
+//   - section headings: 10pt bold caps, 0.5pt rule the full content width
+//   - role line: bold left, dates right-aligned on the SAME line (tab-stop effect via x,y)
+//   - subline: italic muted company · location
+//   - bullets: 10pt, hanging indent so wraps align under the first letter
+
+const PAGE_MARGIN = 43; // ~0.6"
+const COLOR_MUTED = '#4b5563';
+const COLOR_RULE = '#d1d5db';
+const COLOR_HEADING = '#111827';
 
 export async function renderPdf(resume: ParsedResume): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'LETTER', margin: 54 }); // 0.75" margins
+    const doc = new PDFDocument({ size: 'LETTER', margin: PAGE_MARGIN });
     const chunks: Buffer[] = [];
     doc.on('data', (c) => chunks.push(c as Buffer));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Header — contact block
+    const contentLeft = doc.page.margins.left;
+    const contentRight = doc.page.width - doc.page.margins.right;
+    const contentWidth = contentRight - contentLeft;
+
+    // Header — name + contact
     const c = resume.contact;
     if (c.name) {
-      doc.fontSize(18).font('Helvetica-Bold').text(c.name, { align: 'center' });
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(22)
+        .fillColor('#000')
+        .text(c.name, contentLeft, doc.y, { width: contentWidth, align: 'center' });
     }
-    const contactLine = [c.email, c.phone, c.location].filter(Boolean).join('  ·  ');
-    if (contactLine) {
-      doc.moveDown(0.3).fontSize(9).font('Helvetica').text(contactLine, { align: 'center' });
+    const contactBits = [c.email, c.phone, c.location].filter(Boolean);
+    if (contactBits.length) {
+      doc.moveDown(0.35);
+      doc
+        .font('Helvetica')
+        .fontSize(9.5)
+        .fillColor(COLOR_MUTED)
+        .text(contactBits.join('  •  '), { width: contentWidth, align: 'center' });
     }
     if (c.links?.length) {
-      doc.fontSize(9).fillColor('#555').text(c.links.join('  ·  '), { align: 'center' });
-      doc.fillColor('black');
+      doc
+        .font('Helvetica')
+        .fontSize(9.5)
+        .fillColor(COLOR_MUTED)
+        .text(c.links.join('  •  '), { width: contentWidth, align: 'center' });
     }
-    doc.moveDown(0.8);
+    doc.fillColor('#000').moveDown(0.7);
 
     if (resume.summary) {
-      sectionHeader(doc, 'Summary');
-      doc.fontSize(10).font('Helvetica').text(resume.summary, { align: 'left' });
+      sectionHeader(doc, 'Summary', contentLeft, contentRight);
+      doc
+        .font('Helvetica')
+        .fontSize(10)
+        .fillColor('#000')
+        .text(resume.summary, { width: contentWidth, align: 'left', lineGap: 1.5 });
       doc.moveDown(0.6);
     }
 
     if (resume.experience.length > 0) {
-      sectionHeader(doc, 'Experience');
-      for (const e of resume.experience) {
-        doc.font('Helvetica-Bold').fontSize(11).text(`${e.title} — ${e.company}`);
+      sectionHeader(doc, 'Experience', contentLeft, contentRight);
+      resume.experience.forEach((e, i) => {
+        if (i > 0) doc.moveDown(0.5);
+        const dates = `${e.startDate} – ${e.endDate === 'present' ? 'Present' : e.endDate}`;
+        roleLine(doc, e.title, dates, contentLeft, contentRight);
+        const sub = [e.company, e.location].filter(Boolean).join(' · ');
         doc
-          .font('Helvetica')
-          .fontSize(9)
-          .fillColor('#555')
-          .text(
-            `${e.startDate} – ${e.endDate === 'present' ? 'Present' : e.endDate}${e.location ? '  ·  ' + e.location : ''}`,
-          );
-        doc.fillColor('black');
-        doc.moveDown(0.2);
+          .font('Helvetica-Oblique')
+          .fontSize(9.5)
+          .fillColor(COLOR_MUTED)
+          .text(sub, contentLeft, doc.y, { width: contentWidth });
+        doc.fillColor('#000').moveDown(0.2);
         for (const b of e.bullets) {
-          doc.fontSize(10).font('Helvetica').text(`•  ${b.text}`, { indent: 10 });
+          bullet(doc, b.text, contentLeft, contentWidth);
         }
-        doc.moveDown(0.4);
-      }
+      });
+      doc.moveDown(0.4);
     }
 
     if (resume.projects && resume.projects.length > 0) {
-      sectionHeader(doc, 'Projects');
-      for (const p of resume.projects) {
-        const tech = p.tech?.length ? ` — ${p.tech.join(', ')}` : '';
-        doc.font('Helvetica-Bold').fontSize(11).text(`${p.name}${tech}`);
+      sectionHeader(doc, 'Projects', contentLeft, contentRight);
+      resume.projects.forEach((p, i) => {
+        if (i > 0) doc.moveDown(0.5);
+        const right = p.tech?.length ? p.tech.join(', ') : '';
+        roleLine(doc, p.name, right, contentLeft, contentRight);
         if (p.description) {
-          doc.font('Helvetica').fontSize(9).fillColor('#555').text(p.description);
-          doc.fillColor('black');
+          doc
+            .font('Helvetica-Oblique')
+            .fontSize(9.5)
+            .fillColor(COLOR_MUTED)
+            .text(p.description, contentLeft, doc.y, { width: contentWidth });
+          doc.fillColor('#000');
         }
+        doc.moveDown(0.2);
         for (const b of p.bullets) {
-          doc.fontSize(10).font('Helvetica').text(`•  ${b.text}`, { indent: 10 });
+          bullet(doc, b.text, contentLeft, contentWidth);
         }
-        doc.moveDown(0.4);
-      }
+      });
+      doc.moveDown(0.4);
     }
 
     if (resume.education.length > 0) {
-      sectionHeader(doc, 'Education');
-      for (const ed of resume.education) {
-        const line = `${ed.degree}${ed.field ? ', ' + ed.field : ''} — ${ed.institution}`;
-        doc.font('Helvetica-Bold').fontSize(11).text(line);
+      sectionHeader(doc, 'Education', contentLeft, contentRight);
+      resume.education.forEach((ed, i) => {
+        if (i > 0) doc.moveDown(0.3);
+        const title = `${ed.degree}${ed.field ? ', ' + ed.field : ''}`;
         const range = [ed.startDate, ed.endDate].filter(Boolean).join(' – ');
-        if (range || ed.gpa) {
+        roleLine(doc, title, range, contentLeft, contentRight);
+        const sub = [ed.institution, ed.gpa ? `GPA ${ed.gpa}` : ''].filter(Boolean).join(' · ');
+        if (sub) {
           doc
-            .font('Helvetica')
-            .fontSize(9)
-            .fillColor('#555')
-            .text([range, ed.gpa ? `GPA ${ed.gpa}` : ''].filter(Boolean).join('  ·  '));
-          doc.fillColor('black');
+            .font('Helvetica-Oblique')
+            .fontSize(9.5)
+            .fillColor(COLOR_MUTED)
+            .text(sub, contentLeft, doc.y, { width: contentWidth });
+          doc.fillColor('#000');
         }
-        doc.moveDown(0.3);
-      }
+      });
+      doc.moveDown(0.4);
     }
 
     const skillGroups: Array<[string, string[] | undefined]> = [
@@ -113,26 +154,26 @@ export async function renderPdf(resume: ParsedResume): Promise<Buffer> {
       ['Tools', resume.skills.tools],
       ['Soft', resume.skills.soft],
     ];
-    const hasSkills = skillGroups.some(([, v]) => v && v.length > 0);
-    if (hasSkills) {
-      sectionHeader(doc, 'Skills');
+    if (skillGroups.some(([, v]) => v && v.length > 0)) {
+      sectionHeader(doc, 'Skills', contentLeft, contentRight);
       for (const [label, items] of skillGroups) {
         if (!items || items.length === 0) continue;
         doc
           .font('Helvetica-Bold')
           .fontSize(10)
-          .text(`${label}: `, { continued: true })
-          .font('Helvetica')
-          .text(items.join(', '));
+          .fillColor('#000')
+          .text(`${label}: `, contentLeft, doc.y, { continued: true, width: contentWidth });
+        doc.font('Helvetica').text(items.join(', '));
       }
       doc.moveDown(0.4);
     }
 
     if (resume.certifications && resume.certifications.length > 0) {
-      sectionHeader(doc, 'Certifications');
+      sectionHeader(doc, 'Certifications', contentLeft, contentRight);
       for (const cert of resume.certifications) {
-        const line = [cert.name, cert.issuer, cert.date].filter(Boolean).join('  ·  ');
-        doc.font('Helvetica').fontSize(10).text(line);
+        const name = cert.name ?? '';
+        const right = [cert.issuer, cert.date].filter(Boolean).join(' · ');
+        roleLine(doc, name, right, contentLeft, contentRight);
       }
     }
 
@@ -140,25 +181,77 @@ export async function renderPdf(resume: ParsedResume): Promise<Buffer> {
   });
 }
 
-function sectionHeader(doc: PDFKit.PDFDocument, label: string): void {
+function sectionHeader(
+  doc: PDFKit.PDFDocument,
+  label: string,
+  left: number,
+  right: number,
+): void {
+  doc.moveDown(0.3);
   doc
-    .moveDown(0.2)
+    .font('Helvetica-Bold')
+    .fontSize(10.5)
+    .fillColor(COLOR_HEADING)
+    .text(label.toUpperCase(), left, doc.y, { characterSpacing: 1 });
+  const y = doc.y + 1;
+  doc.strokeColor(COLOR_RULE).lineWidth(0.5).moveTo(left, y).lineTo(right, y).stroke();
+  doc.moveDown(0.35).fillColor('#000');
+}
+
+// Renders the title on the left and right-string on the same baseline right-aligned.
+// Uses absolute coordinates so we don't depend on tab stops (pdfkit has none).
+function roleLine(
+  doc: PDFKit.PDFDocument,
+  leftText: string,
+  rightText: string,
+  left: number,
+  right: number,
+): void {
+  const y = doc.y;
+  const width = right - left;
+  // reserve ~28% on the right for dates — enough for "Aug 2019 – Present · SF, CA" in 9.5pt
+  const rightBlockWidth = width * 0.32;
+  const leftBlockWidth = width - rightBlockWidth - 6;
+  doc
     .font('Helvetica-Bold')
     .fontSize(11)
-    .fillColor('#111')
-    .text(label.toUpperCase(), { characterSpacing: 0.5 });
-  // hairline rule
+    .fillColor('#000')
+    .text(leftText, left, y, { width: leftBlockWidth, lineBreak: false, ellipsis: true });
+  const leftEndY = doc.y;
+  if (rightText) {
+    doc
+      .font('Helvetica')
+      .fontSize(9.5)
+      .fillColor(COLOR_MUTED)
+      .text(rightText, left + leftBlockWidth + 6, y, {
+        width: rightBlockWidth,
+        align: 'right',
+        lineBreak: false,
+        ellipsis: true,
+      });
+  }
+  // reset y to whichever column ended lower — usually leftEndY
+  doc.y = leftEndY;
+  doc.fillColor('#000');
+}
+
+function bullet(doc: PDFKit.PDFDocument, text: string, left: number, width: number): void {
+  const indent = 12;
   const y = doc.y;
-  doc
-    .strokeColor('#999')
-    .lineWidth(0.5)
-    .moveTo(doc.page.margins.left, y)
-    .lineTo(doc.page.width - doc.page.margins.right, y)
-    .stroke();
-  doc.moveDown(0.3).fillColor('black');
+  doc.font('Helvetica').fontSize(10).fillColor('#000');
+  // bullet glyph
+  doc.text('•', left, y, { lineBreak: false, width: indent });
+  // body — pdfkit handles wrapping under the x start since we pass explicit x
+  doc.text(text, left + indent, y, {
+    width: width - indent,
+    align: 'left',
+    lineGap: 1.5,
+  });
 }
 
 // --- DOCX (docx) ---------------------------------------------------------
+
+const DOCX_RIGHT_TAB = 9000; // twips — ~6.25" from left margin, fits letter
 
 export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
   const children: Paragraph[] = [];
@@ -168,17 +261,18 @@ export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
     children.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        heading: HeadingLevel.TITLE,
-        children: [new TextRun({ text: c.name, bold: true, size: 32 })],
+        spacing: { after: 60 },
+        children: [new TextRun({ text: c.name, bold: true, size: 36 })],
       }),
     );
   }
-  const contactLine = [c.email, c.phone, c.location].filter(Boolean).join(' · ');
+  const contactLine = [c.email, c.phone, c.location].filter(Boolean).join(' • ');
   if (contactLine) {
     children.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: contactLine, size: 18 })],
+        spacing: { after: 40 },
+        children: [new TextRun({ text: contactLine, size: 19, color: '4b5563' })],
       }),
     );
   }
@@ -186,63 +280,59 @@ export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
     children.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: c.links.join(' · '), size: 18, color: '555555' })],
+        spacing: { after: 200 },
+        children: [new TextRun({ text: c.links.join(' • '), size: 19, color: '4b5563' })],
       }),
     );
   }
 
   if (resume.summary) {
     children.push(docxHeader('Summary'));
-    children.push(new Paragraph({ children: [new TextRun({ text: resume.summary, size: 20 })] }));
+    children.push(
+      new Paragraph({
+        spacing: { after: 120 },
+        children: [new TextRun({ text: resume.summary, size: 20 })],
+      }),
+    );
   }
 
   if (resume.experience.length > 0) {
     children.push(docxHeader('Experience'));
-    for (const e of resume.experience) {
-      children.push(
-        new Paragraph({
-          spacing: { before: 120 },
-          children: [new TextRun({ text: `${e.title} — ${e.company}`, bold: true, size: 22 })],
-        }),
-      );
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({
-              text: `${e.startDate} – ${e.endDate === 'present' ? 'Present' : e.endDate}${e.location ? ' · ' + e.location : ''}`,
-              italics: true,
-              size: 18,
-              color: '555555',
-            }),
-          ],
-        }),
-      );
+    resume.experience.forEach((e, i) => {
+      const dates = `${e.startDate} – ${e.endDate === 'present' ? 'Present' : e.endDate}`;
+      children.push(docxRoleLine(e.title, dates, i > 0));
+      const sub = [e.company, e.location].filter(Boolean).join(' · ');
+      if (sub) {
+        children.push(
+          new Paragraph({
+            spacing: { after: 40 },
+            children: [new TextRun({ text: sub, italics: true, size: 19, color: '4b5563' })],
+          }),
+        );
+      }
       for (const b of e.bullets) {
         children.push(
           new Paragraph({
             bullet: { level: 0 },
+            spacing: { after: 20 },
             children: [new TextRun({ text: b.text, size: 20 })],
           }),
         );
       }
-    }
+    });
   }
 
   if (resume.projects && resume.projects.length > 0) {
     children.push(docxHeader('Projects'));
-    for (const p of resume.projects) {
-      const tech = p.tech?.length ? ` — ${p.tech.join(', ')}` : '';
-      children.push(
-        new Paragraph({
-          spacing: { before: 120 },
-          children: [new TextRun({ text: `${p.name}${tech}`, bold: true, size: 22 })],
-        }),
-      );
+    resume.projects.forEach((p, i) => {
+      const right = p.tech?.length ? p.tech.join(', ') : '';
+      children.push(docxRoleLine(p.name, right, i > 0));
       if (p.description) {
         children.push(
           new Paragraph({
+            spacing: { after: 40 },
             children: [
-              new TextRun({ text: p.description, italics: true, size: 18, color: '555555' }),
+              new TextRun({ text: p.description, italics: true, size: 19, color: '4b5563' }),
             ],
           }),
         );
@@ -251,39 +341,30 @@ export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
         children.push(
           new Paragraph({
             bullet: { level: 0 },
+            spacing: { after: 20 },
             children: [new TextRun({ text: b.text, size: 20 })],
           }),
         );
       }
-    }
+    });
   }
 
   if (resume.education.length > 0) {
     children.push(docxHeader('Education'));
-    for (const ed of resume.education) {
-      const title = `${ed.degree}${ed.field ? ', ' + ed.field : ''} — ${ed.institution}`;
-      children.push(
-        new Paragraph({
-          spacing: { before: 120 },
-          children: [new TextRun({ text: title, bold: true, size: 22 })],
-        }),
-      );
+    resume.education.forEach((ed, i) => {
+      const title = `${ed.degree}${ed.field ? ', ' + ed.field : ''}`;
       const range = [ed.startDate, ed.endDate].filter(Boolean).join(' – ');
-      if (range || ed.gpa) {
+      children.push(docxRoleLine(title, range, i > 0));
+      const sub = [ed.institution, ed.gpa ? `GPA ${ed.gpa}` : ''].filter(Boolean).join(' · ');
+      if (sub) {
         children.push(
           new Paragraph({
-            children: [
-              new TextRun({
-                text: [range, ed.gpa ? `GPA ${ed.gpa}` : ''].filter(Boolean).join(' · '),
-                italics: true,
-                size: 18,
-                color: '555555',
-              }),
-            ],
+            spacing: { after: 40 },
+            children: [new TextRun({ text: sub, italics: true, size: 19, color: '4b5563' })],
           }),
         );
       }
-    }
+    });
   }
 
   const skillGroups: Array<[string, string[] | undefined]> = [
@@ -297,6 +378,7 @@ export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
       if (!items || items.length === 0) continue;
       children.push(
         new Paragraph({
+          spacing: { after: 40 },
           children: [
             new TextRun({ text: `${label}: `, bold: true, size: 20 }),
             new TextRun({ text: items.join(', '), size: 20 }),
@@ -309,22 +391,60 @@ export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
   if (resume.certifications && resume.certifications.length > 0) {
     children.push(docxHeader('Certifications'));
     for (const cert of resume.certifications) {
-      const line = [cert.name, cert.issuer, cert.date].filter(Boolean).join(' · ');
-      children.push(new Paragraph({ children: [new TextRun({ text: line, size: 20 })] }));
+      const name = cert.name ?? '';
+      const right = [cert.issuer, cert.date].filter(Boolean).join(' · ');
+      children.push(docxRoleLine(name, right, false));
     }
   }
 
   const doc = new Document({
-    sections: [{ children }],
+    styles: {
+      default: {
+        document: {
+          run: { font: 'Calibri', size: 20 },
+        },
+      },
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: { top: 720, bottom: 720, left: 720, right: 720 },
+          },
+        },
+        children,
+      },
+    ],
   });
   return Packer.toBuffer(doc);
 }
 
 function docxHeader(label: string): Paragraph {
   return new Paragraph({
-    heading: HeadingLevel.HEADING_2,
     spacing: { before: 280, after: 80 },
-    border: { bottom: { color: '999999', space: 1, style: 'single', size: 6 } },
-    children: [new TextRun({ text: label.toUpperCase(), bold: true, size: 22 })],
+    border: { bottom: { color: 'd1d5db', space: 2, style: 'single', size: 6 } },
+    children: [
+      new TextRun({
+        text: label.toUpperCase(),
+        bold: true,
+        size: 22,
+        color: '111827',
+        characterSpacing: 20,
+      }),
+    ],
+  });
+}
+
+// Left-aligned title, right-aligned dates on the same line using a right tab stop.
+function docxRoleLine(left: string, right: string, spaceBefore: boolean): Paragraph {
+  return new Paragraph({
+    spacing: { before: spaceBefore ? 160 : 0, after: 20 },
+    tabStops: [{ type: TabStopType.RIGHT, position: DOCX_RIGHT_TAB }],
+    children: [
+      new TextRun({ text: left, bold: true, size: 22 }),
+      ...(right
+        ? [new TextRun({ text: `\t${right}`, size: 19, color: '4b5563' })]
+        : []),
+    ],
   });
 }
