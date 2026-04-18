@@ -17,7 +17,7 @@ function buildSystemPrompt(): string {
     '\n',
   );
 
-  return `You are doing two jobs in one pass on this resume and job description:
+  return `You are doing two jobs in one pass on this resume and job description. Be specific and concrete. Vague generic feedback is useless — it wastes the candidate's time.
 
 JOB 1 — SENIOR HIRING MANAGER (brutally honest, not kind).
 Pretend you are a senior hiring manager at a top company in the industry implied by the JD. Tell the candidate honestly what is weak, what is missing, and what would make you reject this resume in the first 10 seconds. Do not soften. Call out vague bullets, lack of impact, seniority mismatch, career-gap red flags, buzzword salad, formatting that an ATS will mangle, and anything that signals "junior" when the JD wants senior (or vice versa). These observations go into atsIssues (severity "high" = reject-worthy) and sections.weaknesses.
@@ -49,7 +49,27 @@ Your output must be valid JSON matching this TypeScript type (do not wrap in mar
   "sections": Array<{ name: string, strengths: string[], weaknesses: string[], suggestions: string[] }>
 }
 
-Keep arrays focused: 4-8 atsIssues (at least one "high" if a rejection trigger exists), 5-15 keywords each side, 3-6 sections covering Summary, Experience, Skills, Projects, Education as applicable.`;
+Keep arrays focused: 4-8 atsIssues (at least one "high" if a rejection trigger exists), 5-15 keywords each side, 3-6 sections covering Summary, Experience, Skills, Projects, Education as applicable.
+
+EXAMPLES of the specificity level required:
+
+Bad atsIssue (rejected):
+  { "severity": "high", "issue": "Experience section is weak", "fix": "Make it stronger" }
+
+Good atsIssue (what you should produce):
+  { "severity": "high", "issue": "Three of your last four bullets at Acme start with 'Responsible for' — recruiters skim the first word of every bullet and this reads as a job-description dump, not accomplishments", "fix": "Rewrite these three bullets to start with an action verb (Built, Shipped, Led, Reduced). Keep the scope but flip the opener.", "location": "experience: Senior SWE @ Acme" }
+
+Bad section weakness (rejected):
+  "Skills section could be better"
+
+Good section weakness (what you should produce):
+  "Skills lists 'Microsoft Office, teamwork, hardworking' alongside 'Kubernetes, gRPC' — the soft-skill filler dilutes the senior-infra signal the JD is asking for"
+
+Bad keyword densityNote (rejected):
+  "keyword match is okay"
+
+Good keyword densityNote (what you should produce):
+  "You're matching 7 of 14 must-have keywords. The three highest-weight ones the JD repeats — 'distributed systems', 'observability', 'on-call' — are missing entirely, and your current experience honestly covers all three."`;
 }
 
 function buildUserPrompt(parsed: ParsedResume, jd: string): string {
