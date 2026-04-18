@@ -5,6 +5,7 @@ terraform {
     neon       = { source = "kislerdm/neon", version = "~> 0.6" }
     upstash    = { source = "upstash/upstash", version = "~> 1.5" }
     vercel     = { source = "vercel/vercel", version = "~> 2.0" }
+    google     = { source = "hashicorp/google", version = "~> 5.40" }
   }
 
   backend "remote" {
@@ -22,6 +23,17 @@ provider "upstash" {
   api_key = var.upstash_api_key
 }
 provider "vercel" { api_token = var.vercel_api_token }
+provider "google" {
+  project = var.gcp_project_id
+  region  = "us-central1"
+}
+
+module "pdf_service" {
+  source            = "../../modules/cloudrun"
+  project_id        = var.gcp_project_id
+  service_name      = "resumerx-pdf-prod"
+  pdf_service_token = var.pdf_service_token
+}
 
 module "storage" {
   source       = "../../modules/cloudflare"
@@ -57,7 +69,7 @@ module "web" {
     UPSTASH_REDIS_REST_URL   = { value = module.ratelimit.rest_url, targets = ["production"] }
     UPSTASH_REDIS_REST_TOKEN = { value = module.ratelimit.rest_token, targets = ["production"] }
     GROQ_API_KEY             = { value = var.groq_api_key, targets = ["production"] }
-    PDF_SERVICE_URL          = { value = var.pdf_service_url, targets = ["production"] }
+    PDF_SERVICE_URL          = { value = module.pdf_service.url, targets = ["production"] }
     PDF_SERVICE_TOKEN        = { value = var.pdf_service_token, targets = ["production"] }
     SENTRY_DSN               = { value = var.sentry_dsn, targets = ["production"] }
     NEXT_PUBLIC_APP_URL      = { value = var.app_url, targets = ["production"] }

@@ -46,14 +46,14 @@ variable "groq_api_key" {
   sensitive = true
 }
 
-# pdf-service runs on fly (see modules/fly/README.md) — its URL is known after flyctl deploy
-variable "pdf_service_url" {
-  type = string
-}
-
 variable "pdf_service_token" {
   type      = string
   sensitive = true
+}
+
+variable "gcp_project_id" {
+  type        = string
+  description = "GCP project hosting the pdf-service Cloud Run"
 }
 
 variable "sentry_dsn" {

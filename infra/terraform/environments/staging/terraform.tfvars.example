@@ -16,8 +16,8 @@ git_repo               = "bhanu0710/resumerx"
 
 groq_api_key           = "gsk_..."
 
-pdf_service_url        = "https://resumerx-pdf-staging.fly.dev"
 pdf_service_token      = "..."
+gcp_project_id         = "resumerx-xxxxxx"
 
 sentry_dsn             = "https://...@o0.ingest.sentry.io/0"
 app_url                = "https://resumerx-staging.vercel.app"

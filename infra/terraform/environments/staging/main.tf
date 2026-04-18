@@ -5,6 +5,7 @@ terraform {
     neon       = { source = "kislerdm/neon", version = "~> 0.6" }
     upstash    = { source = "upstash/upstash", version = "~> 1.5" }
     vercel     = { source = "vercel/vercel", version = "~> 2.0" }
+    google     = { source = "hashicorp/google", version = "~> 5.40" }
   }
 
   # Remote state lives in Terraform Cloud so both environments share one source of truth.
@@ -24,6 +25,10 @@ provider "upstash" {
   api_key = var.upstash_api_key
 }
 provider "vercel" { api_token = var.vercel_api_token }
+provider "google" {
+  project = var.gcp_project_id
+  region  = "us-central1"
+}
 
 module "storage" {
   source       = "../../modules/cloudflare"
@@ -44,6 +49,13 @@ module "ratelimit" {
   region = "us-east-1"
 }
 
+module "pdf_service" {
+  source            = "../../modules/cloudrun"
+  project_id        = var.gcp_project_id
+  service_name      = "resumerx-pdf-staging"
+  pdf_service_token = var.pdf_service_token
+}
+
 module "web" {
   source            = "../../modules/vercel"
   project_name      = "resumerx-staging"
@@ -59,7 +71,7 @@ module "web" {
     UPSTASH_REDIS_REST_URL   = { value = module.ratelimit.rest_url, targets = ["production", "preview"] }
     UPSTASH_REDIS_REST_TOKEN = { value = module.ratelimit.rest_token, targets = ["production", "preview"] }
     GROQ_API_KEY             = { value = var.groq_api_key, targets = ["production", "preview"] }
-    PDF_SERVICE_URL          = { value = var.pdf_service_url, targets = ["production", "preview"] }
+    PDF_SERVICE_URL          = { value = module.pdf_service.url, targets = ["production", "preview"] }
     PDF_SERVICE_TOKEN        = { value = var.pdf_service_token, targets = ["production", "preview"] }
     SENTRY_DSN               = { value = var.sentry_dsn, targets = ["production", "preview"] }
     NEXT_PUBLIC_APP_URL      = { value = var.app_url, targets = ["production", "preview"] }
