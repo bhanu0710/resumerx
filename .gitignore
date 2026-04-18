@@ -53,3 +53,4 @@ pino-*.log
 
 # local dev tooling — not for the repo
 .claude/
+tsconfig.tsbuildinfo
