@@ -421,3 +421,25 @@ Files:
 - End-to-end curl flow, grep web log for structured lines.
 
 **What I'd do next time:** I'd have skipped pino-pretty from the start — it's a classic Next.js footgun that costs 15 minutes to diagnose every time. Also, I'd wire the audit call into a small decorator around `groqChat()` instead of calling `recordLlmCall()` at three individual sites. That way adding a new LLM call site would get audit for free. Noted as a phase-10 refactor candidate.
+
+---
+
+## Phase 10 — Tests
+
+**When:** Apr 18 2026
+
+**What I wanted:** Phase 9 got the observability in place, but nothing actually proves the code does what it says. I needed enough test coverage to make refactors safe without turning the repo into a testing cathedral. Scope: Vitest unit tests for the pure logic, a Playwright e2e scaffold for the golden path, and leaning on the existing pdf-parse round-trip test for the parsing side.
+
+**Approach:**
+- `apps/web/vitest.config.ts` with a `server-only` shim so server modules can be imported under Node.
+- Rate-limit tests: sliding-window correctness, per-key isolation, window expiry.
+- Rewrite pure-function tests: `collectBullets` never touches summary/education/skills, `selectJdKeywords` orders missing first and caps to 15.
+- Playwright scaffolded (no webServer wiring — fights Next HMR). One golden-path spec using `/api/dev-upload` so e2e works without cloud creds.
+
+**What I skipped and why:** I didn't write a test for `lengthDriftExceeded` or the stub validator path because they're private to `rewrite.ts` and exposing them just for tests felt worse than the coverage gap. Phase 14 load tests will exercise those paths against real bullets. Also skipped component tests — the RSC pages are thin and the API routes are where the logic lives.
+
+**Checks:**
+- `pnpm -r test` — 19 passing across shared (7) + pdf-service (3) + web (9).
+- `pnpm --filter @resumerx/web exec tsc --noEmit` clean.
+
+**What I'd do next time:** I'd have added the vitest config alongside the first web file that needed it in phase 5, instead of backfilling it here. The shim-for-server-only trick is the kind of thing you discover once and forget, so writing it down: alias `server-only` to an empty module in vitest config.
