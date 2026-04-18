@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getStore } from '@/server/db';
 import { RewriteDiff } from '@/components/rewrite-diff';
+import { RegenerateButton } from '@/components/regenerate-button';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,6 +47,7 @@ export default async function RewritePage({ params }: { params: { id: string } }
           >
             download .docx
           </a>
+          <RegenerateButton analysisId={r.analysisId} />
           <Link
             href={`/r/${r.analysisId}`}
             className="border-border text-muted-foreground hover:text-foreground rounded-md border px-4 py-2"

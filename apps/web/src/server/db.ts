@@ -51,6 +51,7 @@ export interface Store {
   }): Promise<void>;
   getRewrite(id: string): Promise<RewriteRow | null>;
   findRewriteByAnalysisId(analysisId: string): Promise<RewriteRow | null>;
+  deleteRewrite(id: string): Promise<void>;
   setAcceptedBullets(rewriteId: string, map: Record<string, string>): Promise<void>;
   insertLlmCall(row: {
     id: string;
@@ -115,6 +116,9 @@ function makePgStore(): Store {
         .where(eq(rewrites.analysisId, analysisId))
         .limit(1);
       return rows[0] ?? null;
+    },
+    async deleteRewrite(id) {
+      await db.delete(rewrites).where(eq(rewrites.id, id));
     },
     async setAcceptedBullets(rewriteId, map) {
       await db.update(rewrites).set({ acceptedBullets: map }).where(eq(rewrites.id, rewriteId));
@@ -199,6 +203,9 @@ function makeMemoryStore(): Store {
         if (row.analysisId === analysisId) return row;
       }
       return null;
+    },
+    async deleteRewrite(id) {
+      ws.delete(id);
     },
     async setAcceptedBullets(rewriteId, map) {
       const row = ws.get(rewriteId);
