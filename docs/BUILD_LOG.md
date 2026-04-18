@@ -317,3 +317,37 @@ Files:
 - Preview walkthrough via /api/upload-url + curl → /api/analyze → /api/rewrite → /rw/[id]
 
 **What I'd do next time:** I'd have stashed the in-memory store on globalThis from the start — the Next.js dev-mode per-route module eval is a known gotcha and I've hit it before. Also, the rewrite kickoff page is a server component that does real work on GET, which means a refresh re-runs the whole rewrite. Should idempotent-guard by keying on `analysisId` and returning the existing rewrite if one exists. Noted for phase 8 polish.
+
+---
+
+## Phase 7 — PDF + DOCX render, download endpoint (2026-04-18)
+
+**What I did:**
+- `apps/pdf-service/src/render.ts` — `renderPdf()` with pdfkit (Letter, 0.75" margins, centered contact header, hairline section rules, bold titles + grey meta lines, bulleted experience/projects, skills grouped by category). `renderDocx()` mirrors the same structure with the `docx` package (Paragraph/TextRun, HEADING_2 section headers with bottom border, bullet lists). `applyAccepted()` merges the user's per-bullet choices into the ParsedResume before rendering — same default as the UI (original if no choice saved).
+- `apps/pdf-service/src/index.ts` — both `/render-pdf` and `/render-docx` routes now call the real renderers, validate with `RenderBodySchema` (resume + optional accepted map), set `content-type` + `content-disposition`.
+- `apps/web/src/server/pdf-service.ts` — added `RenderFormat = 'pdf' | 'docx'` and `renderResume(resume, accepted, format)` typed client that posts to the right endpoint and returns `{ bytes, contentType }`.
+- `apps/web/src/app/api/download/[rewriteId]/route.ts` — GET with `?format=pdf|docx`, fetches rewrite → analysis → resume, fills any unsaved acceptances with the UI default (rewritten if passed AND differs, else original), streams the bytes back with `attachment; filename="resume.<ext>"`.
+- `apps/web/src/app/rw/[id]/page.tsx` — two download buttons (pdf primary, docx outline) next to the back link.
+
+**Decisions:**
+- **Both formats render server-side, no client-side PDF libs.** The download is one HTTP hop: browser → /api/download → pdf-service → bytes. Keeps the bundle small and the font/layout consistent.
+- **Default-fill missing acceptances on the server.** The download endpoint replicates the UI's default logic rather than requiring the user to click "save" first. If they never touched anything, they still get a sensible resume out.
+- **pdfkit over Puppeteer/Chromium for the PDF.** Predictable layout, no headless browser, ~50ms render vs ~2s for Puppeteer. Looks less flashy but it's an ATS-targeted resume — plain text in a clean single-column layout is what we want anyway.
+
+**Problems hit:**
+- **tsup bundled CJS deps into ESM and broke at runtime** — first build of pdf-service ran and immediately crashed on `Dynamic require of "stream" is not supported` from inside pdfkit's `restructure` dep. Fix: externalize all runtime deps (pdfkit, pdf-parse, fastify, @fastify/multipart, docx, @aws-sdk/client-s3, pino, pino-pretty, puppeteer-core) from the tsup bundle. The service-side dist/index.js dropped from 2.47 MB to 23 KB, and Node's ESM→CJS interop handles the imports at runtime. Also moved pdfkit from devDependencies → dependencies (it was a runtime dep mis-classified).
+- **NextResponse rejected `Buffer` as BodyInit.** TS error: Buffer not assignable to BodyInit (shows up as URLSearchParams mismatch — confusing error message but real). Fix: copy bytes into a fresh ArrayBuffer before handing to NextResponse. Same trick I used earlier in pdf-service.ts for the Blob/FormData upload.
+- **Preview driver used wrong request shape** — my ad-hoc curl script posted `{r2Key, jd}` to `/api/analyze` which expects `{resumeId, jobDescription}`, and used POST to `/api/dev-upload` which is PUT-only. Not a code bug, but flagged that the dev-upload route name + verb could be friendlier. Noted for phase 8.
+
+**Tests:**
+- `pnpm --filter @resumerx/web exec tsc --noEmit` → clean.
+- `pnpm build` → web + pdf-service build green. `/api/download/[rewriteId]` shows up as a dynamic route.
+- Manual preview: full flow upload → analyze → rewrite → `GET /api/download/<id>?format=pdf` returned 200 `application/pdf` 2128 bytes starting `%PDF-`, parses as "PDF 1.3, 1 page". DOCX returned 200 `application/vnd.openxml…wordprocessingml.document` 7926 bytes starting `PK..` with a valid Office zip structure (word/document.xml etc.).
+
+**Commands run:**
+- `pnpm --filter @resumerx/web exec tsc --noEmit`
+- `pnpm --filter @resumerx/pdf-service build`
+- `pnpm build`
+- end-to-end curl flow against localhost:3000 with the pdf-service on 3001, in-memory DB + local fs + Groq stubs
+
+**What I'd do next time:** I'd have caught the tsup bundling issue at build time by wiring `node dist/index.js` into the package's `build` step as a smoke-boot check. 23 KB vs 2.47 MB is also a hint — if a Fastify + pdfkit + docx service compiles to 2 MB of bundled JS, something is being dragged in that shouldn't be. I'll carry that smell forward.
