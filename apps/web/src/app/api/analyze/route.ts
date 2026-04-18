@@ -8,6 +8,7 @@ import { getStore } from '@/server/db';
 import { getStorage, resumeKey } from '@/server/storage';
 import { parsePdfBytes, PdfServiceError } from '@/server/pdf-service';
 import { runAnalysis } from '@/server/analyze';
+import { check, ipOf, LIMITS } from '@/server/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -15,6 +16,14 @@ export const maxDuration = 60;
 const TTL_MS = ARTIFACT_TTL_HOURS * 60 * 60 * 1000;
 
 export async function POST(req: Request) {
+  const rl = check(`analyze:${ipOf(req)}`, LIMITS.analyze.limit, LIMITS.analyze.windowMs);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfterSec: rl.retryAfterSec },
+      { status: 429, headers: { 'retry-after': String(rl.retryAfterSec) } },
+    );
+  }
+
   let body;
   try {
     body = AnalyzeRequestSchema.parse(await req.json());

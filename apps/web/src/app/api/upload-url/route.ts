@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resumeId, UPLOAD_ALLOWED_TYPES, UPLOAD_MAX_BYTES, type UploadUrlResponse } from '@resumerx/shared';
 import { getStorage, resumeKey } from '@/server/storage';
+import { check, ipOf, LIMITS } from '@/server/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +13,14 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  const rl = check(`upload-url:${ipOf(req)}`, LIMITS.uploadUrl.limit, LIMITS.uploadUrl.windowMs);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfterSec: rl.retryAfterSec },
+      { status: 429, headers: { 'retry-after': String(rl.retryAfterSec) } },
+    );
+  }
+
   let body: z.infer<typeof BodySchema>;
   try {
     body = BodySchema.parse(await req.json());

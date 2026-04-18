@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { RewriteRequestSchema, ARTIFACT_TTL_HOURS } from '@resumerx/shared';
 import { getStore } from '@/server/db';
 import { runRewrite, selectJdKeywords } from '@/server/rewrite';
+import { check, ipOf, LIMITS } from '@/server/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -9,6 +10,14 @@ export const maxDuration = 300;
 const TTL_MS = ARTIFACT_TTL_HOURS * 60 * 60 * 1000;
 
 export async function POST(req: Request) {
+  const rl = check(`rewrite:${ipOf(req)}`, LIMITS.rewrite.limit, LIMITS.rewrite.windowMs);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfterSec: rl.retryAfterSec },
+      { status: 429, headers: { 'retry-after': String(rl.retryAfterSec) } },
+    );
+  }
+
   let body;
   try {
     body = RewriteRequestSchema.parse(await req.json());
