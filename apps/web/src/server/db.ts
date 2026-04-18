@@ -2,9 +2,21 @@ import 'server-only';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { eq } from 'drizzle-orm';
-import type { ParsedResume, Analysis, RewriteResult } from '@resumerx/shared';
+import type { ParsedResume, Analysis, RewriteResult, ValidationResult } from '@resumerx/shared';
+import { desc } from 'drizzle-orm';
 import { env } from './env';
-import { resumes, analyses, rewrites, type ResumeRow, type AnalysisRow, type RewriteRow } from './db-schema';
+import { resumes, analyses, rewrites, llmCalls, type ResumeRow, type AnalysisRow, type RewriteRow } from './db-schema';
+
+export interface LlmCallRow {
+  id: string;
+  purpose: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+  validation: ValidationResult | null;
+  createdAt: Date;
+}
 
 // abstract interface so the API routes don't care if we're hitting pg or a Map
 export interface Store {
@@ -27,6 +39,16 @@ export interface Store {
   getRewrite(id: string): Promise<RewriteRow | null>;
   findRewriteByAnalysisId(analysisId: string): Promise<RewriteRow | null>;
   setAcceptedBullets(rewriteId: string, map: Record<string, string>): Promise<void>;
+  insertLlmCall(row: {
+    id: string;
+    purpose: string;
+    model: string;
+    promptTokens: number;
+    completionTokens: number;
+    latencyMs: number;
+    validation: ValidationResult | null;
+  }): Promise<void>;
+  getRecentLlmCalls(limit: number): Promise<LlmCallRow[]>;
 }
 
 // --- postgres implementation ---
@@ -87,6 +109,34 @@ function makePgStore(): Store {
         .set({ acceptedBullets: map })
         .where(eq(rewrites.id, rewriteId));
     },
+    async insertLlmCall(row) {
+      await db.insert(llmCalls).values({
+        id: row.id,
+        purpose: row.purpose,
+        model: row.model,
+        promptTokens: row.promptTokens,
+        completionTokens: row.completionTokens,
+        latencyMs: row.latencyMs,
+        validationPassed: row.validation,
+      });
+    },
+    async getRecentLlmCalls(limit) {
+      const rows = await db
+        .select()
+        .from(llmCalls)
+        .orderBy(desc(llmCalls.createdAt))
+        .limit(limit);
+      return rows.map((r) => ({
+        id: r.id,
+        purpose: r.purpose,
+        model: r.model,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+        latencyMs: r.latencyMs,
+        validation: r.validationPassed ?? null,
+        createdAt: r.createdAt,
+      }));
+    },
   };
 }
 
@@ -96,6 +146,7 @@ function makeMemoryStore(): Store {
   const rs = new Map<string, ResumeRow>();
   const as = new Map<string, AnalysisRow>();
   const ws = new Map<string, RewriteRow>();
+  const ls: LlmCallRow[] = [];
   const now = () => new Date();
 
   return {
@@ -147,6 +198,14 @@ function makeMemoryStore(): Store {
       const row = ws.get(rewriteId);
       if (!row) return;
       ws.set(rewriteId, { ...row, acceptedBullets: map });
+    },
+    async insertLlmCall(row) {
+      ls.unshift({ ...row, validation: row.validation, createdAt: now() });
+      // keep the ring small; dev inspection only
+      if (ls.length > 500) ls.length = 500;
+    },
+    async getRecentLlmCalls(limit) {
+      return ls.slice(0, limit);
     },
   };
 }
