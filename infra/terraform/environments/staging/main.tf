@@ -10,7 +10,7 @@ terraform {
   # Remote state lives in Terraform Cloud so both environments share one source of truth.
   # If you're bootstrapping solo, comment this out and use local state until the workspace exists.
   backend "remote" {
-    organization = "resumerx"
+    organization = "resumerx1"
     workspaces {
       name = "staging"
     }

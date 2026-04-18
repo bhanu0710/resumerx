@@ -21,7 +21,7 @@ order:
 5. **Groq** — grab `GROQ_API_KEY` from console.groq.com.
 6. **Sentry** — create an org + project, copy the DSN.
 7. **Terraform Cloud** (optional but recommended) — create an org named
-   `resumerx` with two workspaces `staging` and `production`, or comment
+   `resumerx1` with two workspaces `staging` and `production`, or comment
    out the `backend "remote"` block and use local state to start.
 
 ## Running it

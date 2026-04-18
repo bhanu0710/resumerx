@@ -8,7 +8,7 @@ terraform {
   }
 
   backend "remote" {
-    organization = "resumerx"
+    organization = "resumerx1"
     workspaces {
       name = "production"
     }
