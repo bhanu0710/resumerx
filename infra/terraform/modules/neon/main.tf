@@ -27,6 +27,10 @@ resource "neon_project" "this" {
   name       = var.project_name
   region_id  = var.region
   pg_version = 16
+
+  # Free tier caps history retention at 6h (21600s). Provider default is 24h
+  # which the API rejects — set explicitly so this works on the free plan.
+  history_retention_seconds = 21600
 }
 
 output "connection_uri" {
