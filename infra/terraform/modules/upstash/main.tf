@@ -21,8 +21,13 @@ variable "region" {
 
 resource "upstash_redis_database" "rate_limit" {
   database_name = var.name
-  region        = var.region
-  tls           = true
+  # Upstash deprecated regional databases in 2025. The provider still requires
+  # `region`, but the magic value "global" tells it we want a global DB, and
+  # primary_region sets the actual write region. Single-region globals are
+  # the supported shape now.
+  region         = "global"
+  primary_region = var.region
+  tls            = true
   # eviction is fine here — the rate-limit keys are short-lived and re-derivable.
   eviction = true
 }
