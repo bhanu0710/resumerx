@@ -1,0 +1,87 @@
+import { NextResponse } from 'next/server';
+import {
+  AnalyzeRequestSchema,
+  analysisId as newAnalysisId,
+  ARTIFACT_TTL_HOURS,
+  type Analysis,
+} from '@resumerx/shared';
+import { getStore } from '@/server/db';
+import { getStorage, resumeKey } from '@/server/storage';
+import { parsePdfBytes, PdfServiceError } from '@/server/pdf-service';
+
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
+const TTL_MS = ARTIFACT_TTL_HOURS * 60 * 60 * 1000;
+
+// phase 4 wires upload → parse → persist. the real llm analysis lands in phase 5;
+// for now we stamp a placeholder Analysis so the /r/[id] page has something to render.
+function stubAnalysis(id: string): Analysis {
+  return {
+    id,
+    overallScore: 0,
+    atsScore: 0,
+    atsIssues: [],
+    keywordMatch: { matched: [], missing: [], score: 0, densityNote: 'pending (phase 5)' },
+    sections: [],
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function POST(req: Request) {
+  let body;
+  try {
+    body = AnalyzeRequestSchema.parse(await req.json());
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'invalid_request', detail: (err as Error).message },
+      { status: 400 },
+    );
+  }
+
+  const store = getStore();
+  const storage = getStorage();
+
+  // if the resume row already exists (retry), reuse the parse
+  let resume = await store.getResume(body.resumeId);
+  if (!resume) {
+    const key = resumeKey(body.resumeId);
+    let bytes: Buffer;
+    try {
+      bytes = await storage.getObject(key);
+    } catch {
+      return NextResponse.json(
+        { error: 'upload_not_found', detail: 'finish the upload before analyzing' },
+        { status: 404 },
+      );
+    }
+
+    let parsed;
+    try {
+      parsed = await parsePdfBytes(bytes);
+    } catch (err) {
+      if (err instanceof PdfServiceError) {
+        return NextResponse.json(
+          { error: 'parse_failed', detail: err.message, status: err.status },
+          { status: 502 },
+        );
+      }
+      throw err;
+    }
+
+    await store.insertResume({ id: body.resumeId, r2Key: key, parsed, ttlMs: TTL_MS });
+    resume = await store.getResume(body.resumeId);
+  }
+
+  const id = newAnalysisId();
+  const analysis = stubAnalysis(id);
+  await store.insertAnalysis({
+    id,
+    resumeId: body.resumeId,
+    jobDescription: body.jobDescription,
+    result: analysis,
+    ttlMs: TTL_MS,
+  });
+
+  return NextResponse.json({ analysisId: id, resumeId: body.resumeId });
+}
