@@ -8,6 +8,7 @@ import {
 import { ATS_RULES } from '@resumerx/shared/ats-rules';
 import { env } from './env';
 import { groqChat } from './groq';
+import { recordLlmCall } from './llm-audit';
 
 // Build the analysis prompt. The ATS rules are the single source of truth —
 // /how-ats-works renders the same list, so the UI and the prompt can't drift.
@@ -200,6 +201,14 @@ export async function runAnalysis({
       { role: 'system', content: buildSystemPrompt() },
       { role: 'user', content: buildUserPrompt(parsed, jobDescription) },
     ],
+  });
+  void recordLlmCall({
+    purpose: 'analyze',
+    model: res.model,
+    promptTokens: res.promptTokens,
+    completionTokens: res.completionTokens,
+    latencyMs: res.latencyMs,
+    parentId: analysisId,
   });
 
   const llm = parseLLMJson(res.content);

@@ -15,6 +15,7 @@ import {
 } from '@resumerx/shared';
 import { env } from './env';
 import { groqChat, GroqError } from './groq';
+import { recordLlmCall } from './llm-audit';
 
 // Flatten experience + projects into a list of rewritable bullets.
 // Per spec: bullets live in Experience and Projects only. Summary/Education/Skills/Certifications are never rewritten.
@@ -164,6 +165,14 @@ async function callRewriter(
       },
     ],
   });
+  void recordLlmCall({
+    purpose: 'rewrite_bullet',
+    model: res.model,
+    promptTokens: res.promptTokens,
+    completionTokens: res.completionTokens,
+    latencyMs: res.latencyMs,
+    parentId: target.bulletId,
+  });
   const resp = RewriteLLMResponseSchema.parse(parseLLMJson<RewriteLLMResponse>(res.content));
   return { resp, stub: false };
 }
@@ -195,7 +204,16 @@ async function callValidator(
       },
     ],
   });
-  return ValidationResultSchema.parse(parseLLMJson<ValidationResult>(res.content));
+  const validation = ValidationResultSchema.parse(parseLLMJson<ValidationResult>(res.content));
+  void recordLlmCall({
+    purpose: 'validate',
+    model: res.model,
+    promptTokens: res.promptTokens,
+    completionTokens: res.completionTokens,
+    latencyMs: res.latencyMs,
+    validation,
+  });
+  return validation;
 }
 
 // If validator fails OR length drift exceeded, we keep the rewrite in the result
