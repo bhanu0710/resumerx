@@ -1,0 +1,19 @@
+# Builds the pdf-service image from the monorepo root so the Dockerfile's
+# workspace COPYs resolve. Invoked by `gcloud builds submit` — the deploy step
+# afterwards points Cloud Run at the produced image.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/pdf-service/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resumerx-pdf-staging:$SHORT_SHA
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resumerx-pdf-staging:latest
+      - .
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resumerx-pdf-staging:$SHORT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resumerx-pdf-staging:latest
+options:
+  logging: CLOUD_LOGGING_ONLY
