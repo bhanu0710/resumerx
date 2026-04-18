@@ -14,6 +14,12 @@ export default async function RewriteKickoff({ params }: { params: { id: string 
   const store = getStore();
   const analysis = await store.getAnalysis(params.id);
   if (!analysis) notFound();
+
+  // Idempotent: if we already rewrote this analysis, jump straight to the result.
+  // Protects against refreshing /r/[id]/rewrite and re-running 30s of LLM work.
+  const existing = await store.findRewriteByAnalysisId(params.id);
+  if (existing) redirect(`/rw/${existing.id}`);
+
   const resume = await store.getResume(analysis.resumeId);
   if (!resume) notFound();
 

@@ -25,6 +25,7 @@ export interface Store {
     ttlMs: number;
   }): Promise<void>;
   getRewrite(id: string): Promise<RewriteRow | null>;
+  findRewriteByAnalysisId(analysisId: string): Promise<RewriteRow | null>;
   setAcceptedBullets(rewriteId: string, map: Record<string, string>): Promise<void>;
 }
 
@@ -70,6 +71,14 @@ function makePgStore(): Store {
     },
     async getRewrite(id) {
       const rows = await db.select().from(rewrites).where(eq(rewrites.id, id)).limit(1);
+      return rows[0] ?? null;
+    },
+    async findRewriteByAnalysisId(analysisId) {
+      const rows = await db
+        .select()
+        .from(rewrites)
+        .where(eq(rewrites.analysisId, analysisId))
+        .limit(1);
       return rows[0] ?? null;
     },
     async setAcceptedBullets(rewriteId, map) {
@@ -127,6 +136,12 @@ function makeMemoryStore(): Store {
     },
     async getRewrite(id) {
       return ws.get(id) ?? null;
+    },
+    async findRewriteByAnalysisId(analysisId) {
+      for (const row of ws.values()) {
+        if (row.analysisId === analysisId) return row;
+      }
+      return null;
     },
     async setAcceptedBullets(rewriteId, map) {
       const row = ws.get(rewriteId);
