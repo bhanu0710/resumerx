@@ -24,31 +24,31 @@ export default async function RewritePage({ params }: { params: { id: string } }
     <div className="container py-10 md:py-14">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground font-mono text-xs uppercase tracking-wider">
             rewrite
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">bullet-by-bullet</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {r.summary.totalBullets} bullets · {r.summary.rewritten} rewritten ·{' '}
-            {r.summary.skipped} skipped · {r.summary.flagged} flagged by validator
+          <p className="text-muted-foreground mt-1 text-sm">
+            {r.summary.totalBullets} bullets · {r.summary.rewritten} rewritten · {r.summary.skipped}{' '}
+            skipped · {r.summary.flagged} flagged by validator
           </p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
           <a
             href={`/api/download/${r.id}?format=pdf`}
-            className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 font-medium"
           >
             download .pdf
           </a>
           <a
             href={`/api/download/${r.id}?format=docx`}
-            className="rounded-md border border-border px-4 py-2 font-medium hover:border-foreground/40"
+            className="border-border hover:border-foreground/40 rounded-md border px-4 py-2 font-medium"
           >
             download .docx
           </a>
           <Link
             href={`/r/${r.analysisId}`}
-            className="rounded-md border border-border px-4 py-2 text-muted-foreground hover:text-foreground"
+            className="border-border text-muted-foreground hover:text-foreground rounded-md border px-4 py-2"
           >
             ← back
           </Link>
@@ -60,18 +60,14 @@ export default async function RewritePage({ params }: { params: { id: string } }
           <p className="font-medium text-amber-400">
             {r.summary.flagged} rewrite{r.summary.flagged === 1 ? '' : 's'} flagged by validator
           </p>
-          <p className="mt-1 text-muted-foreground">
+          <p className="text-muted-foreground mt-1">
             The validator caught things the rewriter shouldn&apos;t have added. For those, the
             original is selected by default — you can still override, but read the flag first.
           </p>
         </div>
       )}
 
-      <RewriteDiff
-        rewriteId={r.id}
-        bullets={r.bullets}
-        accepted={row.acceptedBullets ?? {}}
-      />
+      <RewriteDiff rewriteId={r.id} bullets={r.bullets} accepted={row.acceptedBullets ?? {}} />
     </div>
   );
 }

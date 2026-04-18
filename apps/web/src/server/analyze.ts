@@ -13,9 +13,9 @@ import { recordLlmCall } from './llm-audit';
 // Build the analysis prompt. The ATS rules are the single source of truth —
 // /how-ats-works renders the same list, so the UI and the prompt can't drift.
 function buildSystemPrompt(): string {
-  const rulesText = ATS_RULES.map(
-    (r) => `- [${r.category}] ${r.title}: ${r.description}`,
-  ).join('\n');
+  const rulesText = ATS_RULES.map((r) => `- [${r.category}] ${r.title}: ${r.description}`).join(
+    '\n',
+  );
 
   return `You are an ATS (applicant tracking system) analyst. Your job is to score a resume against a job description and identify specific, actionable issues.
 

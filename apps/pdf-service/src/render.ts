@@ -1,12 +1,5 @@
 import PDFDocument from 'pdfkit';
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-  AlignmentType,
-} from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import type { ParsedResume } from '@resumerx/shared';
 
 // Apply the user's per-bullet choices to the parsed resume before rendering.
@@ -248,7 +241,9 @@ export async function renderDocx(resume: ParsedResume): Promise<Buffer> {
       if (p.description) {
         children.push(
           new Paragraph({
-            children: [new TextRun({ text: p.description, italics: true, size: 18, color: '555555' })],
+            children: [
+              new TextRun({ text: p.description, italics: true, size: 18, color: '555555' }),
+            ],
           }),
         );
       }

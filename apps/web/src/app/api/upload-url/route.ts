@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { resumeId, UPLOAD_ALLOWED_TYPES, UPLOAD_MAX_BYTES, type UploadUrlResponse } from '@resumerx/shared';
+import {
+  resumeId,
+  UPLOAD_ALLOWED_TYPES,
+  UPLOAD_MAX_BYTES,
+  type UploadUrlResponse,
+} from '@resumerx/shared';
 import { getStorage, resumeKey } from '@/server/storage';
 import { check, ipOf, LIMITS } from '@/server/rate-limit';
 

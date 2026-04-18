@@ -99,7 +99,12 @@ export async function POST(req: Request) {
   });
 
   log.info(
-    { analysisId: id, resumeId: body.resumeId, usedStub: analysisOut.usedStub, ms: Date.now() - started },
+    {
+      analysisId: id,
+      resumeId: body.resumeId,
+      usedStub: analysisOut.usedStub,
+      ms: Date.now() - started,
+    },
     'analyze ok',
   );
   return NextResponse.json({

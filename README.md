@@ -8,4 +8,4 @@
 
 ---
 
-*Full README coming in Phase 15. This is a stub.*
+_Full README coming in Phase 15. This is a stub._

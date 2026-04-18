@@ -12,13 +12,13 @@ export default async function ResultsPage({ params }: { params: { id: string } }
     return (
       <div className="container py-16">
         <h1 className="text-2xl font-semibold">example analysis</h1>
-        <p className="mt-2 text-muted-foreground">
+        <p className="text-muted-foreground mt-2">
           worked example lands in a later phase. for now, upload your own resume to see the real
           output.
         </p>
         <Link
           href="/"
-          className="mt-6 inline-block text-sm text-primary underline-offset-4 hover:underline"
+          className="text-primary mt-6 inline-block text-sm underline-offset-4 hover:underline"
         >
           ← back
         </Link>
@@ -37,24 +37,24 @@ export default async function ResultsPage({ params }: { params: { id: string } }
     <div className="container py-10 md:py-14">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          <p className="text-muted-foreground font-mono text-xs uppercase tracking-wider">
             analysis
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {resume?.parsed.contact.name || 'your resume'} vs. this job
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">id: {a.id}</p>
+          <p className="text-muted-foreground mt-1 text-sm">id: {a.id}</p>
         </div>
         <div className="flex gap-2 text-sm">
           <Link
             href={`/r/${params.id}/rewrite`}
-            className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 font-medium"
           >
             rewrite bullets →
           </Link>
           <Link
             href="/"
-            className="rounded-md border border-border px-4 py-2 text-muted-foreground hover:text-foreground"
+            className="border-border text-muted-foreground hover:text-foreground rounded-md border px-4 py-2"
           >
             new analysis
           </Link>
@@ -83,13 +83,13 @@ export default async function ResultsPage({ params }: { params: { id: string } }
             emptyLabel="nothing missing — good coverage"
           />
         </div>
-        <p className="mt-3 text-sm text-muted-foreground">{a.keywordMatch.densityNote}</p>
+        <p className="text-muted-foreground mt-3 text-sm">{a.keywordMatch.densityNote}</p>
       </section>
 
       <section className="mt-10">
         <h2 className="mb-4 text-lg font-medium">ATS issues ({a.atsIssues.length})</h2>
         {a.atsIssues.length === 0 ? (
-          <p className="rounded-lg border border-border/60 bg-card/30 p-6 text-sm text-muted-foreground">
+          <p className="border-border/60 bg-card/30 text-muted-foreground rounded-lg border p-6 text-sm">
             no ATS issues detected.
           </p>
         ) : (
@@ -105,14 +105,9 @@ export default async function ResultsPage({ params }: { params: { id: string } }
         <h2 className="mb-4 text-lg font-medium">section feedback</h2>
         <div className="grid gap-4 md:grid-cols-2">
           {a.sections.map((s) => (
-            <div
-              key={s.name}
-              className="rounded-xl border border-border/60 bg-card/40 p-5"
-            >
+            <div key={s.name} className="border-border/60 bg-card/40 rounded-xl border p-5">
               <h3 className="text-base font-medium">{s.name}</h3>
-              {s.strengths.length > 0 && (
-                <Block label="strengths" items={s.strengths} tone="ok" />
-              )}
+              {s.strengths.length > 0 && <Block label="strengths" items={s.strengths} tone="ok" />}
               {s.weaknesses.length > 0 && (
                 <Block label="weaknesses" items={s.weaknesses} tone="warn" />
               )}
@@ -128,21 +123,14 @@ export default async function ResultsPage({ params }: { params: { id: string } }
 }
 
 function ScoreCard({ label, value }: { label: string; value: number }) {
-  const tone =
-    value >= 80
-      ? 'text-primary'
-      : value >= 60
-        ? 'text-amber-400'
-        : 'text-destructive';
+  const tone = value >= 80 ? 'text-primary' : value >= 60 ? 'text-amber-400' : 'text-destructive';
   return (
-    <div className="rounded-xl border border-border/60 bg-card/40 p-6">
-      <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </p>
+    <div className="border-border/60 bg-card/40 rounded-xl border p-6">
+      <p className="text-muted-foreground font-mono text-xs uppercase tracking-wider">{label}</p>
       <p className={`mt-2 text-4xl font-semibold tabular-nums ${tone}`}>{value}</p>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-border/40">
+      <div className="bg-border/40 mt-3 h-1.5 w-full overflow-hidden rounded-full">
         <div
-          className="h-full bg-primary/80"
+          className="bg-primary/80 h-full"
           style={{ width: `${Math.max(2, Math.min(100, value))}%` }}
         />
       </div>
@@ -163,19 +151,19 @@ function KeywordPanel({
 }) {
   const dot = tone === 'ok' ? 'bg-primary' : 'bg-amber-400';
   return (
-    <div className="rounded-xl border border-border/60 bg-card/40 p-5">
+    <div className="border-border/60 bg-card/40 rounded-xl border p-5">
       <div className="mb-3 flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
         <p className="text-sm font-medium">{title}</p>
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
+        <p className="text-muted-foreground text-sm">{emptyLabel}</p>
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {items.map((k) => (
             <li
               key={k}
-              className="rounded-md border border-border/60 bg-background px-2 py-0.5 text-xs"
+              className="border-border/60 bg-background rounded-md border px-2 py-0.5 text-xs"
             >
               {k}
             </li>
@@ -188,11 +176,7 @@ function KeywordPanel({
 
 function IssueRow({ issue }: { issue: ATSIssue }) {
   const Icon =
-    issue.severity === 'high'
-      ? AlertCircle
-      : issue.severity === 'med'
-        ? AlertTriangle
-        : Info;
+    issue.severity === 'high' ? AlertCircle : issue.severity === 'med' ? AlertTriangle : Info;
   const tone =
     issue.severity === 'high'
       ? 'text-destructive'
@@ -200,7 +184,7 @@ function IssueRow({ issue }: { issue: ATSIssue }) {
         ? 'text-amber-400'
         : 'text-muted-foreground';
   return (
-    <li className="rounded-xl border border-border/60 bg-card/40 p-5">
+    <li className="border-border/60 bg-card/40 rounded-xl border p-5">
       <div className="flex items-start gap-3">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone}`} />
         <div className="flex-1">
@@ -209,14 +193,14 @@ function IssueRow({ issue }: { issue: ATSIssue }) {
               {issue.severity}
             </span>
             {issue.location && (
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-wider">
                 · {issue.location}
               </span>
             )}
           </div>
           <p className="mt-1 text-sm">{issue.issue}</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">fix:</span> {issue.fix}
+          <p className="text-muted-foreground mt-2 text-sm">
+            <span className="text-foreground font-medium">fix:</span> {issue.fix}
           </p>
         </div>
       </div>
@@ -242,7 +226,7 @@ function Block({
         <Icon className="h-3 w-3" />
         <span className="font-mono uppercase tracking-wider">{label}</span>
       </div>
-      <ul className="space-y-1 text-sm text-muted-foreground">
+      <ul className="text-muted-foreground space-y-1 text-sm">
         {items.map((it, i) => (
           <li key={i} className="leading-snug">
             {it}

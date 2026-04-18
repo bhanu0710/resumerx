@@ -23,7 +23,8 @@ const SECTION_ALIASES: Record<string, RegExp> = {
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
 const PHONE_RE = /(\+?\d[\d\s\-().]{8,}\d)/;
-const URL_RE = /https?:\/\/[^\s)]+|(?:linkedin\.com|github\.com|[a-z0-9-]+\.(?:io|dev|com|net))\/[^\s)]+/gi;
+const URL_RE =
+  /https?:\/\/[^\s)]+|(?:linkedin\.com|github\.com|[a-z0-9-]+\.(?:io|dev|com|net))\/[^\s)]+/gi;
 
 // bullet-ish: lines starting with -, •, *, ·, ▪, ‣, — or a digit followed by .
 const BULLET_PREFIX = /^\s*([-•*·▪‣—]|\d+\.)\s+/;
@@ -42,9 +43,7 @@ export function structureResume(rawText: string): ParsedResume {
     ? parseExperienceBlock(sections.experience)
     : [];
 
-  const projects: ProjectItem[] = sections.projects
-    ? parseProjectsBlock(sections.projects)
-    : [];
+  const projects: ProjectItem[] = sections.projects ? parseProjectsBlock(sections.projects) : [];
 
   const education = sections.education ? parseEducationBlock(sections.education) : [];
 
@@ -86,7 +85,9 @@ function extractContact(headerLines: string[]): ParsedResume['contact'] {
   );
 
   // location — very lossy. Look for "City, ST" or "City, Country" patterns.
-  const locationMatch = headerLines.find((l) => /^[\w\s.-]+,\s*\w{2,}/.test(l) && !EMAIL_RE.test(l));
+  const locationMatch = headerLines.find(
+    (l) => /^[\w\s.-]+,\s*\w{2,}/.test(l) && !EMAIL_RE.test(l),
+  );
 
   return {
     name: name?.trim(),
@@ -177,13 +178,20 @@ function parseExperienceBlock(block: string[]): ExperienceItem[] {
 function parseRoleHeader(
   line: string,
   nextLine: string,
-): { company: string; title: string; startDate: string; endDate: string | 'present'; location?: string } {
+): {
+  company: string;
+  title: string;
+  startDate: string;
+  endDate: string | 'present';
+  location?: string;
+} {
   // try common patterns:
   // "Software Engineer — Acme Corp       Jan 2022 – Present"
   // "Acme Corp | Software Engineer | 2020 – 2022"
   // "Software Engineer, Acme Corp (2020 - 2022)"
 
-  const dateRangeRe = /\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|(?:19|20)\d{2})\s*[-–—]\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|(?:19|20)\d{2}|present|current)\b/i;
+  const dateRangeRe =
+    /\b((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|(?:19|20)\d{2})\s*[-–—]\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|(?:19|20)\d{2}|present|current)\b/i;
   const dateMatch = line.match(dateRangeRe) ?? nextLine.match(dateRangeRe);
 
   const startDate = dateMatch?.[1] ?? '';
@@ -192,7 +200,10 @@ function parseRoleHeader(
     endRaw === 'present' || endRaw === 'current' ? 'present' : (dateMatch?.[2] ?? '');
 
   // strip the date range from the line for parsing title/company
-  const withoutDate = line.replace(dateRangeRe, '').replace(/\s{2,}/g, ' ').trim();
+  const withoutDate = line
+    .replace(dateRangeRe, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 
   let title = '';
   let company = '';
@@ -204,7 +215,10 @@ function parseRoleHeader(
     company = sepMatch[2]?.trim() ?? '';
   } else {
     // fallback: split on comma
-    const parts = withoutDate.split(',').map((p) => p.trim()).filter(Boolean);
+    const parts = withoutDate
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
     if (parts.length >= 2) {
       title = parts[0] ?? '';
       company = parts[1] ?? '';
@@ -291,7 +305,11 @@ function parseSkillsBlock(block: string[]): ParsedResume['skills'] {
     const labeled = line.match(/^([^:]+):\s*(.+)$/);
     if (labeled) {
       const label = labeled[1]?.toLowerCase() ?? '';
-      const values = labeled[2]?.split(/[,|/·]/).map((s) => s.trim()).filter(Boolean) ?? [];
+      const values =
+        labeled[2]
+          ?.split(/[,|/·]/)
+          .map((s) => s.trim())
+          .filter(Boolean) ?? [];
       if (/tool|platform|framework|library/.test(label)) tools.push(...values);
       else if (/soft|communication|leadership|people/.test(label)) soft.push(...values);
       else technical.push(...values);
@@ -300,14 +318,21 @@ function parseSkillsBlock(block: string[]): ParsedResume['skills'] {
 
     // bullet-prefixed skill list
     if (BULLET_PREFIX.test(line)) {
-      const values = line.replace(BULLET_PREFIX, '').split(/[,|/·]/).map((s) => s.trim()).filter(Boolean);
+      const values = line
+        .replace(BULLET_PREFIX, '')
+        .split(/[,|/·]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
       technical.push(...values);
       continue;
     }
 
     // comma-separated skills on a plain line
     if (line.includes(',')) {
-      const values = line.split(/[,|/·]/).map((s) => s.trim()).filter(Boolean);
+      const values = line
+        .split(/[,|/·]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
       technical.push(...values);
     } else if (lower.split(/\s+/).length <= 5) {
       technical.push(line.trim());

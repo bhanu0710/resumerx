@@ -14,6 +14,7 @@ If you find something, email me at the address in my GitHub profile. I'll respon
 ## Scope
 
 The main surface worth looking at:
+
 - The presigned URL generation (`/api/upload-url`) — make sure it can't be abused to upload to arbitrary paths
 - The SSE endpoints — watch for prompt injection via job description input
 - The pdf-service auth — PDF_SERVICE_TOKEN should be long and random in prod, check the token comparison is constant-time

@@ -60,11 +60,11 @@ export function UploadZone({
           pick(e.dataTransfer.files?.[0] ?? null);
         }}
         className={cn(
-          'group relative flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border bg-card/50 px-6 py-10 text-center transition-colors',
+          'border-border bg-card/50 group relative flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-6 py-10 text-center transition-colors',
           'hover:border-primary/50 hover:bg-accent/30',
           dragActive && 'border-primary bg-accent/40',
           disabled && 'pointer-events-none opacity-50',
-          file && 'border-solid border-primary/40 bg-accent/20',
+          file && 'border-primary/40 bg-accent/20 border-solid',
         )}
       >
         <input
@@ -77,10 +77,10 @@ export function UploadZone({
         />
         {file ? (
           <div className="flex items-center gap-3 text-sm">
-            <FileText className="h-5 w-5 text-primary" />
+            <FileText className="text-primary h-5 w-5" />
             <div className="flex flex-col items-start">
               <span className="font-medium">{file.name}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 {(file.size / 1024).toFixed(0)} KB
               </span>
             </div>
@@ -90,7 +90,7 @@ export function UploadZone({
                 e.stopPropagation();
                 pick(null);
               }}
-              className="ml-2 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              className="text-muted-foreground hover:bg-accent hover:text-foreground ml-2 rounded p-1"
               aria-label="remove file"
             >
               <X className="h-4 w-4" />
@@ -98,16 +98,16 @@ export function UploadZone({
           </div>
         ) : (
           <>
-            <UploadCloud className="mb-3 h-6 w-6 text-muted-foreground transition-colors group-hover:text-primary" />
+            <UploadCloud className="text-muted-foreground group-hover:text-primary mb-3 h-6 w-6 transition-colors" />
             <p className="text-sm">
               <span className="font-medium">Drop your resume</span>
               <span className="text-muted-foreground"> or click to upload</span>
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">PDF, 5MB max</p>
+            <p className="text-muted-foreground mt-1 text-xs">PDF, 5MB max</p>
           </>
         )}
       </div>
-      {err && <p className="text-sm text-destructive">{err}</p>}
+      {err && <p className="text-destructive text-sm">{err}</p>}
     </div>
   );
 }

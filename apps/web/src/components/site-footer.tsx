@@ -2,8 +2,8 @@ import Link from 'next/link';
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border/50 py-8">
-      <div className="container flex flex-col items-start justify-between gap-4 text-sm text-muted-foreground md:flex-row md:items-center">
+    <footer className="border-border/50 border-t py-8">
+      <div className="text-muted-foreground container flex flex-col items-start justify-between gap-4 text-sm md:flex-row md:items-center">
         <p>
           resumerx — open source at{' '}
           <Link

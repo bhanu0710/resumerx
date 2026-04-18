@@ -7,7 +7,7 @@ export default function PrivacyPage() {
   return (
     <article className="container max-w-2xl py-16 md:py-20">
       <h1 className="text-4xl font-semibold tracking-tight">Privacy.</h1>
-      <p className="mt-4 text-lg text-muted-foreground">
+      <p className="text-muted-foreground mt-4 text-lg">
         Short version: your resume is stored briefly so the tool can work, then it&apos;s deleted.
         No training on your data. No accounts, no tracking.
       </p>
@@ -26,7 +26,9 @@ export default function PrivacyPage() {
           don&apos;t train on API inputs. I don&apos;t share your data with anyone else.
         </Row>
         <Row label="Tracking">None. No analytics script, no pixels, no session recording.</Row>
-        <Row label="Accounts">There aren&apos;t any. Don&apos;t upload anything you&apos;d be upset losing.</Row>
+        <Row label="Accounts">
+          There aren&apos;t any. Don&apos;t upload anything you&apos;d be upset losing.
+        </Row>
         <Row label="Source">
           Open source at{' '}
           <a
@@ -45,7 +47,7 @@ export default function PrivacyPage() {
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-2 md:grid-cols-[160px_1fr] md:gap-6">
-      <div className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <div className="text-muted-foreground font-mono text-xs uppercase tracking-wider">
         {label}
       </div>
       <div className="text-foreground/90">{children}</div>

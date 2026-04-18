@@ -1,10 +1,5 @@
 import { pgTable, text, jsonb, timestamp, integer, index } from 'drizzle-orm/pg-core';
-import type {
-  ParsedResume,
-  Analysis,
-  RewriteResult,
-  ValidationResult,
-} from '@resumerx/shared';
+import type { ParsedResume, Analysis, RewriteResult, ValidationResult } from '@resumerx/shared';
 
 // resumes — parsed uploads, kept 24h
 export const resumes = pgTable(

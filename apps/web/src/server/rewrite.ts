@@ -177,17 +177,17 @@ async function callRewriter(
   return { resp, stub: false };
 }
 
-async function callValidator(
-  original: string,
-  rewritten: string,
-): Promise<ValidationResult> {
+async function callValidator(original: string, rewritten: string): Promise<ValidationResult> {
   if (!env.groq.apiKey) {
     // stub validator: flag only the clearly unsafe cases — added digits, added all-caps acronyms not in original
     const flags: ValidationFlag[] = [];
     const originalDigits = original.match(/\d+/g) ?? [];
     const rewrittenDigits = rewritten.match(/\d+/g) ?? [];
     if (rewrittenDigits.length > originalDigits.length) {
-      flags.push({ type: 'added_metric', detail: 'rewrite introduces a number not in the original' });
+      flags.push({
+        type: 'added_metric',
+        detail: 'rewrite introduces a number not in the original',
+      });
     }
     return { passed: flags.length === 0, flags };
   }
@@ -270,7 +270,10 @@ export async function rewriteBullet(
 
 // naive keyword extraction — the full analysis JSON already has matched + missing
 // keywords; we pass those through instead of re-extracting from the JD.
-export function selectJdKeywords(analysisKeywords: { matched: string[]; missing: string[] }): string[] {
+export function selectJdKeywords(analysisKeywords: {
+  matched: string[];
+  missing: string[];
+}): string[] {
   // prefer missing keywords first (weaving them in is the goal),
   // then matched ones so the rewriter keeps reinforcing what's already there.
   return [...analysisKeywords.missing.slice(0, 10), ...analysisKeywords.matched.slice(0, 5)];
@@ -328,9 +331,7 @@ export async function runRewrite({
 
   // rough score delta: each successful, validator-passed rewrite is worth a point,
   // capped at +20. Real scoring happens if we re-run analysis, but this is a cheap hint.
-  const netGood = results.filter(
-    (r) => r.rewritten !== r.original && r.validation.passed,
-  ).length;
+  const netGood = results.filter((r) => r.rewritten !== r.original && r.validation.passed).length;
   const predictedAtsScoreDelta = Math.min(20, netGood);
 
   return {

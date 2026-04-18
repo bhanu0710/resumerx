@@ -77,7 +77,7 @@ export function RewriteDiff({ rewriteId, bullets, accepted }: Props) {
     <div className="space-y-8">
       {groups.map((g, gi) => (
         <section key={gi}>
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-muted-foreground mb-3 font-mono text-xs uppercase tracking-wider">
             {g.label}
           </h2>
           <ul className="space-y-4">
@@ -93,15 +93,15 @@ export function RewriteDiff({ rewriteId, bullets, accepted }: Props) {
         </section>
       ))}
 
-      <div className="sticky bottom-4 flex items-center justify-between rounded-xl border border-border/60 bg-card/80 p-4 backdrop-blur">
-        <p className="text-sm text-muted-foreground">
+      <div className="border-border/60 bg-card/80 sticky bottom-4 flex items-center justify-between rounded-xl border p-4 backdrop-blur">
+        <p className="text-muted-foreground text-sm">
           {savedAt ? `saved ${savedAt.toLocaleTimeString()}` : 'unsaved changes'}
-          {error && <span className="ml-2 text-destructive">· {error}</span>}
+          {error && <span className="text-destructive ml-2">· {error}</span>}
         </p>
         <button
           onClick={save}
           disabled={saving}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {saving ? 'saving…' : 'save choices'}
         </button>
@@ -123,10 +123,10 @@ function BulletCard({
   const flagged = !bullet.validation.passed;
 
   return (
-    <li className="rounded-xl border border-border/60 bg-card/40 p-4 md:p-5">
+    <li className="border-border/60 bg-card/40 rounded-xl border p-4 md:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {identical && (
-          <span className="rounded-md border border-border/60 bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span className="border-border/60 bg-background text-muted-foreground rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider">
             skipped
           </span>
         )}
@@ -137,7 +137,7 @@ function BulletCard({
           </span>
         )}
         {bullet.keywordsInjected.length > 0 && (
-          <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-primary">
+          <span className="border-primary/30 bg-primary/10 text-primary rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider">
             kw: {bullet.keywordsInjected.join(', ')}
           </span>
         )}
@@ -165,7 +165,9 @@ function BulletCard({
         <ul className="mt-3 space-y-1 text-xs text-amber-400/90">
           {bullet.validation.flags.map((f, i) => (
             <li key={i} className="flex gap-2">
-              <span className="font-mono uppercase tracking-wider">{f.type.replace(/_/g, ' ')}:</span>
+              <span className="font-mono uppercase tracking-wider">
+                {f.type.replace(/_/g, ' ')}:
+              </span>
               <span className="text-muted-foreground">{f.detail}</span>
             </li>
           ))}
@@ -173,8 +175,8 @@ function BulletCard({
       )}
 
       {bullet.reasoning && !identical && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          <span className="font-mono uppercase tracking-wider text-foreground/70">why: </span>
+        <p className="text-muted-foreground mt-3 text-xs">
+          <span className="text-foreground/70 font-mono uppercase tracking-wider">why: </span>
           {bullet.reasoning}
         </p>
       )}
@@ -210,13 +212,13 @@ function Panel({
       type="button"
       onClick={onSelect}
       disabled={disabled}
-      className={`group flex flex-col rounded-lg border bg-background/40 p-3 text-left transition-colors hover:border-foreground/30 disabled:cursor-not-allowed disabled:opacity-50 ${ring}`}
+      className={`bg-background/40 hover:border-foreground/30 group flex flex-col rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${ring}`}
     >
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-wider">
           {label}
         </span>
-        {selected && <Check className="h-3.5 w-3.5 text-primary" />}
+        {selected && <Check className="text-primary h-3.5 w-3.5" />}
       </div>
       <p className="text-sm leading-snug">{text}</p>
     </button>

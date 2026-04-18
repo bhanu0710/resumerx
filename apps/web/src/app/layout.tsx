@@ -7,12 +7,12 @@ import { SiteFooter } from '@/components/site-footer';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'resumerx — see what\'s wrong with your resume',
+  title: "resumerx — see what's wrong with your resume",
   description:
-    'Upload your resume. See what\'s wrong with it. Tailor it to a job description without making things up.',
+    "Upload your resume. See what's wrong with it. Tailor it to a job description without making things up.",
   openGraph: {
     title: 'resumerx',
-    description: 'ATS feedback + job-targeted rewrites that don\'t fabricate',
+    description: "ATS feedback + job-targeted rewrites that don't fabricate",
     url: 'https://devwithb.space',
     siteName: 'resumerx',
     type: 'website',

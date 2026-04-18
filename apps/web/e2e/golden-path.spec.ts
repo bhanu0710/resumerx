@@ -9,9 +9,7 @@ test('home → analyze → rewrite → download', async ({ page, request }) => {
 
   // seed a resume via the dev bypass so we don't have to drive a file picker
   const resumeId = `e2e-${Date.now().toString(36)}`;
-  const pdfBytes = Buffer.from(
-    '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<<>>\n%%EOF',
-  );
+  const pdfBytes = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<<>>\n%%EOF');
   const up = await request.put(`/api/dev-upload?resumeId=${resumeId}`, {
     data: pdfBytes,
     headers: { 'content-type': 'application/pdf' },

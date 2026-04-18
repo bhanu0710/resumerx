@@ -5,7 +5,15 @@ import { eq } from 'drizzle-orm';
 import type { ParsedResume, Analysis, RewriteResult, ValidationResult } from '@resumerx/shared';
 import { desc } from 'drizzle-orm';
 import { env } from './env';
-import { resumes, analyses, rewrites, llmCalls, type ResumeRow, type AnalysisRow, type RewriteRow } from './db-schema';
+import {
+  resumes,
+  analyses,
+  rewrites,
+  llmCalls,
+  type ResumeRow,
+  type AnalysisRow,
+  type RewriteRow,
+} from './db-schema';
 
 export interface LlmCallRow {
   id: string;
@@ -20,7 +28,12 @@ export interface LlmCallRow {
 
 // abstract interface so the API routes don't care if we're hitting pg or a Map
 export interface Store {
-  insertResume(row: { id: string; r2Key: string; parsed: ParsedResume; ttlMs: number }): Promise<void>;
+  insertResume(row: {
+    id: string;
+    r2Key: string;
+    parsed: ParsedResume;
+    ttlMs: number;
+  }): Promise<void>;
   getResume(id: string): Promise<ResumeRow | null>;
   insertAnalysis(row: {
     id: string;
@@ -104,10 +117,7 @@ function makePgStore(): Store {
       return rows[0] ?? null;
     },
     async setAcceptedBullets(rewriteId, map) {
-      await db
-        .update(rewrites)
-        .set({ acceptedBullets: map })
-        .where(eq(rewrites.id, rewriteId));
+      await db.update(rewrites).set({ acceptedBullets: map }).where(eq(rewrites.id, rewriteId));
     },
     async insertLlmCall(row) {
       await db.insert(llmCalls).values({
@@ -121,11 +131,7 @@ function makePgStore(): Store {
       });
     },
     async getRecentLlmCalls(limit) {
-      const rows = await db
-        .select()
-        .from(llmCalls)
-        .orderBy(desc(llmCalls.createdAt))
-        .limit(limit);
+      const rows = await db.select().from(llmCalls).orderBy(desc(llmCalls.createdAt)).limit(limit);
       return rows.map((r) => ({
         id: r.id,
         purpose: r.purpose,

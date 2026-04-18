@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 
 export function SiteHeader() {
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border/50 bg-background/80 backdrop-blur">
+    <header className="border-border/50 bg-background/80 sticky top-0 z-40 w-full border-b backdrop-blur">
       <div className="container flex h-14 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-mono text-sm">
-          <span className="inline-block h-2 w-2 rounded-full bg-primary" />
+          <span className="bg-primary inline-block h-2 w-2 rounded-full" />
           resumerx
         </Link>
         <nav className="flex items-center gap-1 text-sm">

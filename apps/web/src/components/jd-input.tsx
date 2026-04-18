@@ -29,15 +29,16 @@ export function JdInput({
         rows={8}
         placeholder="Paste the job posting here. The more detail, the better the keyword matching."
         className={cn(
-          'w-full resize-y rounded-lg border border-input bg-card/50 px-3 py-2 text-sm',
+          'border-input bg-card/50 w-full resize-y rounded-lg border px-3 py-2 text-sm',
           'placeholder:text-muted-foreground',
-          'focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30',
-          (tooShort || tooLong) && 'border-destructive/60 focus:border-destructive focus:ring-destructive/20',
+          'focus:border-primary/50 focus:ring-primary/30 focus:outline-none focus:ring-1',
+          (tooShort || tooLong) &&
+            'border-destructive/60 focus:border-destructive focus:ring-destructive/20',
           'disabled:opacity-50',
         )}
         maxLength={JD_MAX_LENGTH + 500}
       />
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex items-center justify-between text-xs">
         <span>
           {tooShort && `min ${JD_MIN_LENGTH} chars`}
           {tooLong && `over limit — trim to ${JD_MAX_LENGTH}`}

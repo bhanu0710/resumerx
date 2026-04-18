@@ -50,7 +50,9 @@ export async function makeResumePdf(data: FixtureResume): Promise<Buffer> {
 
     doc.fontSize(12).text('Education');
     for (const edu of data.education) {
-      doc.fontSize(10).text(`${edu.degree} — ${edu.institution}${edu.dateRange ? `   ${edu.dateRange}` : ''}`);
+      doc
+        .fontSize(10)
+        .text(`${edu.degree} — ${edu.institution}${edu.dateRange ? `   ${edu.dateRange}` : ''}`);
     }
     doc.moveDown();
 

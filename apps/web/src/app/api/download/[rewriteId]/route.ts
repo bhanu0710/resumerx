@@ -9,10 +9,7 @@ function isFormat(f: string | null): f is RenderFormat {
   return f === 'pdf' || f === 'docx';
 }
 
-export async function GET(
-  req: Request,
-  { params }: { params: { rewriteId: string } },
-) {
+export async function GET(req: Request, { params }: { params: { rewriteId: string } }) {
   const url = new URL(req.url);
   const format = url.searchParams.get('format');
   if (!isFormat(format)) {

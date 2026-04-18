@@ -24,8 +24,7 @@ export const ATS_RULES: ATSRule[] = [
     id: 'single-column',
     category: 'format',
     title: 'Single column layout only',
-    description:
-      'No multi-column resumes. No sidebars. No text boxes. One column, top to bottom.',
+    description: 'No multi-column resumes. No sidebars. No text boxes. One column, top to bottom.',
     whyItMatters:
       'Multi-column layouts get flattened in unpredictable ways by most ATS systems. Your skills section ends up jammed into the middle of a bullet point.',
   },
@@ -33,8 +32,7 @@ export const ATS_RULES: ATSRule[] = [
     id: 'no-tables',
     category: 'format',
     title: 'Avoid tables and text boxes',
-    description:
-      'Use plain text and bullet lists. Skip tables, even for skills grids.',
+    description: 'Use plain text and bullet lists. Skip tables, even for skills grids.',
     whyItMatters:
       'Tables often get read left-to-right across rows instead of column-by-column, producing garbled text.',
   },
@@ -44,7 +42,7 @@ export const ATS_RULES: ATSRule[] = [
     title: 'No graphics, icons, or charts',
     description: 'No skill rating bars, no photos, no logos, no icons next to contact info.',
     whyItMatters:
-      'ATS systems can\'t read images. Anything conveyed as an image is invisible to the system.',
+      "ATS systems can't read images. Anything conveyed as an image is invisible to the system.",
   },
   {
     id: 'action-verbs',
@@ -58,11 +56,11 @@ export const ATS_RULES: ATSRule[] = [
   {
     id: 'quantified-impact',
     category: 'content',
-    title: 'Quantify impact where it\'s real',
+    title: "Quantify impact where it's real",
     description:
       'Numbers. Percentages. Time saved. Dollar amounts. Scale (users, rows, services). Only include metrics that are true.',
     whyItMatters:
-      'Quantified bullets are more believable and more memorable. Just don\'t fabricate them — making up numbers is worse than having none.',
+      "Quantified bullets are more believable and more memorable. Just don't fabricate them — making up numbers is worse than having none.",
   },
   {
     id: 'keyword-density',
@@ -113,9 +111,9 @@ export const ATS_RULES: ATSRule[] = [
     category: 'content',
     title: 'Keep bullets to 1–2 lines',
     description:
-      'One strong sentence per bullet. If it\'s running three lines, break it up or cut it.',
+      "One strong sentence per bullet. If it's running three lines, break it up or cut it.",
     whyItMatters:
-      'Recruiters spend about 7 seconds per resume on first pass. Long bullets don\'t get read.',
+      "Recruiters spend about 7 seconds per resume on first pass. Long bullets don't get read.",
   },
 ];
 
