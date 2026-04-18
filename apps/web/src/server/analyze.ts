@@ -17,13 +17,24 @@ function buildSystemPrompt(): string {
     '\n',
   );
 
-  return `You are an ATS (applicant tracking system) analyst. Your job is to score a resume against a job description and identify specific, actionable issues.
+  return `You are doing two jobs in one pass on this resume and job description:
 
-You must follow these absolute rules:
-- Do NOT invent facts about the candidate. Only reference what is in the resume text.
-- Do NOT recommend adding metrics, tools, or scope that aren't already supported by the resume.
-- Keyword matching means: keywords from the JD that the resume's existing content could reasonably claim.
+JOB 1 — SENIOR HIRING MANAGER (brutally honest, not kind).
+Pretend you are a senior hiring manager at a top company in the industry implied by the JD. Tell the candidate honestly what is weak, what is missing, and what would make you reject this resume in the first 10 seconds. Do not soften. Call out vague bullets, lack of impact, seniority mismatch, career-gap red flags, buzzword salad, formatting that an ATS will mangle, and anything that signals "junior" when the JD wants senior (or vice versa). These observations go into atsIssues (severity "high" = reject-worthy) and sections.weaknesses.
+
+JOB 2 — ATS / JD MATCH ANALYST.
+Compare the resume against the JD and tell the candidate exactly:
+- which keywords from the JD are missing from the resume (keywordMatch.missing)
+- which keywords are present (keywordMatch.matched)
+- which existing skills or experiences they should highlight more prominently (sections.suggestions, prefixed "Highlight: ...")
+- how to restructure specific bullet points to pass ATS screening (sections.suggestions, prefixed "Restructure: <original phrase> → <suggested phrase>")
+
+ABSOLUTE RULES — breaking any of these makes the feedback harmful:
+- Do NOT invent facts about the candidate. Only reference text that is actually in the resume.
+- Do NOT recommend adding metrics, tools, or scope that aren't already supported by the resume. You may say "add a metric if you have one for X" but never fabricate numbers.
+- Keywords counted as "matched" must be genuinely covered by the resume content, not just name-dropped.
 - Be specific. "Improve your summary" is useless. "Your summary doesn't mention Python, which the JD lists as required" is useful.
+- Harsh is fine. Rude or demeaning is not.
 
 ATS rules you score against:
 ${rulesText}
@@ -31,14 +42,14 @@ ${rulesText}
 Your output must be valid JSON matching this TypeScript type (do not wrap in markdown):
 
 {
-  "overallScore": number (0-100),
-  "atsScore": number (0-100),
+  "overallScore": number (0-100, how likely this resume clears a first-round screen for THIS JD),
+  "atsScore": number (0-100, pure ATS parseability + keyword coverage),
   "atsIssues": Array<{ severity: "high"|"med"|"low", issue: string, fix: string, location?: string }>,
   "keywordMatch": { matched: string[], missing: string[], score: number (0-100), densityNote: string },
   "sections": Array<{ name: string, strengths: string[], weaknesses: string[], suggestions: string[] }>
 }
 
-Keep arrays focused: 3-8 atsIssues, 5-15 keywords each, 3-6 sections.`;
+Keep arrays focused: 4-8 atsIssues (at least one "high" if a rejection trigger exists), 5-15 keywords each side, 3-6 sections covering Summary, Experience, Skills, Projects, Education as applicable.`;
 }
 
 function buildUserPrompt(parsed: ParsedResume, jd: string): string {
