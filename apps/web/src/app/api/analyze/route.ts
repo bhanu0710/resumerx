@@ -3,30 +3,16 @@ import {
   AnalyzeRequestSchema,
   analysisId as newAnalysisId,
   ARTIFACT_TTL_HOURS,
-  type Analysis,
 } from '@resumerx/shared';
 import { getStore } from '@/server/db';
 import { getStorage, resumeKey } from '@/server/storage';
 import { parsePdfBytes, PdfServiceError } from '@/server/pdf-service';
+import { runAnalysis } from '@/server/analyze';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const TTL_MS = ARTIFACT_TTL_HOURS * 60 * 60 * 1000;
-
-// phase 4 wires upload → parse → persist. the real llm analysis lands in phase 5;
-// for now we stamp a placeholder Analysis so the /r/[id] page has something to render.
-function stubAnalysis(id: string): Analysis {
-  return {
-    id,
-    overallScore: 0,
-    atsScore: 0,
-    atsIssues: [],
-    keywordMatch: { matched: [], missing: [], score: 0, densityNote: 'pending (phase 5)' },
-    sections: [],
-    createdAt: new Date().toISOString(),
-  };
-}
 
 export async function POST(req: Request) {
   let body;
@@ -74,14 +60,32 @@ export async function POST(req: Request) {
   }
 
   const id = newAnalysisId();
-  const analysis = stubAnalysis(id);
+
+  let analysisOut;
+  try {
+    analysisOut = await runAnalysis({
+      analysisId: id,
+      parsed: resume!.parsed,
+      jobDescription: body.jobDescription,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      { error: 'analysis_failed', detail: (err as Error).message },
+      { status: 502 },
+    );
+  }
+
   await store.insertAnalysis({
     id,
     resumeId: body.resumeId,
     jobDescription: body.jobDescription,
-    result: analysis,
+    result: analysisOut.analysis,
     ttlMs: TTL_MS,
   });
 
-  return NextResponse.json({ analysisId: id, resumeId: body.resumeId });
+  return NextResponse.json({
+    analysisId: id,
+    resumeId: body.resumeId,
+    usedStub: analysisOut.usedStub,
+  });
 }
