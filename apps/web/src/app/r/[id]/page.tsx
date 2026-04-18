@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, AlertTriangle, Info, CheckCircle2 } from 'lucide-react';
 import { getStore } from '@/server/db';
+import { RegenerateAnalysisButton } from '@/components/regenerate-analysis-button';
 import type { Analysis, ATSIssue } from '@resumerx/shared';
 
 export const runtime = 'nodejs';
@@ -52,6 +53,7 @@ export default async function ResultsPage({ params }: { params: { id: string } }
           >
             rewrite bullets →
           </Link>
+          <RegenerateAnalysisButton analysisId={params.id} />
           <Link
             href="/"
             className="border-border text-muted-foreground hover:text-foreground rounded-md border px-4 py-2"

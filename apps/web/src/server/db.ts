@@ -43,6 +43,7 @@ export interface Store {
     ttlMs: number;
   }): Promise<void>;
   getAnalysis(id: string): Promise<AnalysisRow | null>;
+  deleteAnalysis(id: string): Promise<void>;
   insertRewrite(row: {
     id: string;
     analysisId: string;
@@ -96,6 +97,10 @@ function makePgStore(): Store {
     async getAnalysis(id) {
       const rows = await db.select().from(analyses).where(eq(analyses.id, id)).limit(1);
       return rows[0] ?? null;
+    },
+    async deleteAnalysis(id) {
+      await db.delete(rewrites).where(eq(rewrites.analysisId, id));
+      await db.delete(analyses).where(eq(analyses.id, id));
     },
     async insertRewrite({ id, analysisId, result, ttlMs }) {
       await db.insert(rewrites).values({
@@ -184,6 +189,12 @@ function makeMemoryStore(): Store {
     },
     async getAnalysis(id) {
       return as.get(id) ?? null;
+    },
+    async deleteAnalysis(id) {
+      for (const [rid, r] of ws) {
+        if (r.analysisId === id) ws.delete(rid);
+      }
+      as.delete(id);
     },
     async insertRewrite({ id, analysisId, result, ttlMs }) {
       ws.set(id, {
