@@ -1,19 +1,8 @@
-# fly module
+# (unused) fly module
 
-Fly.io doesn't have a first-class Terraform provider that matches flyctl
-feature parity, so the pdf-service app is deployed by `flyctl` in CI
-(phase 12) rather than by Terraform.
+Originally meant to host pdf-service on Fly.io. Fly removed their always-free
+tier in late 2024, so we switched to Google Cloud Run — see
+`modules/cloudrun/` for the active module.
 
-What Terraform does NOT own here:
-
-- app create / release / scale — `flyctl deploy` handles that
-- secrets — `flyctl secrets set` in the deploy workflow
-- volumes — we don't need persistent storage for the parser sidecar
-
-What lives alongside the Terraform root instead:
-
-- `apps/pdf-service/fly.toml` — the app config
-- `.github/workflows/main.yml` — runs `flyctl deploy --remote-only`
-
-If you want Terraform to own DNS or reserved IPs, add them to the
-cloudflare module, not here.
+Left the directory in place because git history points to it. Safe to delete
+in a future cleanup.
