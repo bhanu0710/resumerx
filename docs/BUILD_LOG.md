@@ -275,3 +275,45 @@ Files:
 - `pnpm --filter @resumerx/web build`
 
 **What I'd do next time:** would have designed the LLM-call + audit-log write as one wrapper from the start (`withLLMAudit(purpose, fn)`) so every call site records tokens/latency without remembering. As-is, `runAnalysis` returns the telemetry and the route throws it away — `llm_calls` table is empty until phase 9 wires it up.
+
+---
+
+## Phase 6 — Bullet rewrite + validator + diff UI
+
+**When:** Apr 18 2026, same afternoon as phase 5.
+
+**What I did:** built the headline feature — bullet-by-bullet rewrite with a validator-LLM guardrail, plus the side-by-side diff page with per-bullet accept/reject. Core pieces:
+
+- `apps/web/src/server/rewrite.ts` — `runRewrite()`. Walks experience + projects bullets, calls the rewriter LLM per bullet, then the validator LLM on each output, then mechanical length-drift check. Concurrency cap of 4 so we don't hammer Groq. Returns the full `RewriteResult` shape with summary counts (total / rewritten / skipped / flagged) + `predictedAtsScoreDelta`.
+- Two Groq prompts: rewriter system prompt lists the six absolute rules (no fabrication, no added metrics, no new tech, ±20% length, skip if can't honestly improve, weave keywords only when earned). Validator system prompt asks for structured flags against the five `ValidationFlag` types from `@resumerx/shared`. Both use `response_format: json_object` and parse against their Zod schemas.
+- Validator runs on a smaller + faster model (`llama-3.1-8b-instant` via env) — cheap veto. The big model writes, the small one checks.
+- Dev fallback: same pattern as phases 4-5. Rewriter stub does a weak-verb → strong-verb swap (worked→built, helped→drove). Validator stub adds a `added_metric` flag if the rewrite has more digit groups than the original. It's enough to exercise the UI states (rewritten, skipped, flagged) without a Groq key.
+- `POST /api/rewrite` + `POST /api/rewrite/[id]/accept` — zod-validated request bodies, standard error shapes. Accept writes the user's choice map into the `rewrites.acceptedBullets` jsonb column.
+- `/r/[id]/rewrite` is a server component that kicks off `runRewrite()` and redirects to `/rw/[rewriteId]`. No client-side loading state — the browser's native "navigating…" indicator is enough for a 10-30s server action.
+- `/rw/[id]` + `components/rewrite-diff.tsx` — per-bullet card with two clickable panels (original / rewrite), keyword chips for injected keywords, validator-flag badge when validation fails, reasoning line below. Sticky save bar at the bottom with "unsaved changes" → "saved HH:MM:SS" after `POST /api/rewrite/[id]/accept`.
+
+**Decisions:**
+- **Keep all rewrites in the result even when flagged.** The UI needs to show the user *what* the rewriter wanted to do and *why* the validator rejected it — that's the trust moment. We default the selected panel to "original" for flagged bullets, but the user can still override.
+- **Parallel bullets, concurrency 4.** 20-40 bullets at 2-5s each is 40-200s serial. At concurrency 4 that's 10-50s. Groq's free tier rate limits would start biting above 6-8 concurrent, and I want headroom for the validator calls doubling the request count.
+- **Per-bullet error swallow.** If one bullet's rewrite throws (timeout, 429, JSON parse), we return a pass-through (original unchanged, reasoning = "error: ..."). Better than failing the whole batch.
+- **Mechanical length-drift check after the LLM validator.** The validator sometimes misses length drift because it's focused on facts. The fixed 20% cap is cheap to enforce in code, and gets added to `validation.flags` as `changed_meaning` if tripped.
+- **Default-select logic on the client:** rewritten if (a) it differs from the original and (b) validation passed. Otherwise original. Keeps users safe by default; they opt in to flagged text, not out.
+- **Redirect `/r/[id]/rewrite` → `/rw/[rewriteId]` as a server component** instead of a client-side kickoff. The link from the analysis page becomes a regular `<Link href="…/rewrite">` and the browser handles "loading" natively. Cleaner than a client button with a spinner.
+
+**Problems hit:**
+- **Next.js dev mode didn't share the in-memory store across routes.** `/api/analyze` wrote to one `_store` Map, `/api/rewrite` read from a different one (empty), so every rewrite returned `analysis_not_found`. Cause: App Router evaluates server-module graphs per-route in dev, so module-level singletons aren't singletons. Fix: stash the store on `globalThis.__resumerxStore`. Same pattern people use for prisma in Next. One-line change, no API surface impact.
+- **Stale `.next/` build artifacts after running `next build` earlier in the session.** `next dev` hit "Cannot find module vendor-chunks/drizzle-orm@…" because the build had baked in a specific hash. Fix: wipe `.next/` and restart dev. Noted this in my head for phase 12 CI — production flow won't hit it, but dev needs a clean boot if you switch between `build` and `dev`.
+- **Stub verb-swap typo.** First run produced "Wuilt" instead of "Built" — I was stitching `original.charAt(0).toUpperCase() + swap.slice(1)` which yields the original's W + "uilt". Caught it on the preview screenshot. Fixed to cap-match the whole replacement verb. Good reminder that dev stubs deserve the same "does it read sane?" scan as prod code.
+
+**Tests:**
+- No new unit tests this phase — the validator safety test is the big one and lands in phase 10 with hand-crafted adversarial rewrites.
+- `pnpm --filter @resumerx/web typecheck` → clean.
+- `pnpm --filter @resumerx/web build` → all routes build. New routes: `/api/rewrite` (dynamic), `/api/rewrite/[id]/accept` (dynamic), `/r/[id]/rewrite` (dynamic), `/rw/[id]` (dynamic).
+- Manual preview: uploaded a real PDF, ran analyze, clicked rewrite, landed on `/rw/[id]` showing 5 bullets, 3 rewritten, 2 skipped, 0 flagged. Verb swaps read correctly. Keyword-injection chip showed "postgresql" and "code review" for the bullets where those appeared naturally. Save endpoint round-tripped.
+
+**Commands run:**
+- `pnpm --filter @resumerx/web typecheck`
+- `pnpm --filter @resumerx/web build`
+- Preview walkthrough via /api/upload-url + curl → /api/analyze → /api/rewrite → /rw/[id]
+
+**What I'd do next time:** I'd have stashed the in-memory store on globalThis from the start — the Next.js dev-mode per-route module eval is a known gotcha and I've hit it before. Also, the rewrite kickoff page is a server component that does real work on GET, which means a refresh re-runs the whole rewrite. Should idempotent-guard by keying on `analysisId` and returning the existing rewrite if one exists. Noted for phase 8 polish.
