@@ -34,7 +34,13 @@ export default function LandingPage() {
           size: file.size,
         }),
       });
-      if (!presignRes.ok) throw new Error(`upload-url ${presignRes.status}`);
+      if (!presignRes.ok) {
+        if (presignRes.status === 429) {
+          const b = await presignRes.json().catch(() => ({}));
+          throw new Error(`Too many uploads — try again in ${b.retryAfterSec ?? 60}s.`);
+        }
+        throw new Error(`upload-url ${presignRes.status}`);
+      }
       const { resumeId, uploadUrl } = await presignRes.json();
 
       const putRes = await fetch(uploadUrl, {
@@ -51,6 +57,9 @@ export default function LandingPage() {
       });
       if (!analyzeRes.ok) {
         const body = await analyzeRes.json().catch(() => ({}));
+        if (analyzeRes.status === 429) {
+          throw new Error(`Too many analyses — try again in ${body.retryAfterSec ?? 60}s.`);
+        }
         throw new Error(body.detail || `analyze ${analyzeRes.status}`);
       }
       const { analysisId } = await analyzeRes.json();
