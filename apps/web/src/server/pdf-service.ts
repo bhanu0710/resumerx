@@ -43,3 +43,31 @@ export async function parsePdfBytes(bytes: Buffer, filename = 'resume.pdf'): Pro
   // but belt-and-braces here means downstream code can trust the type.
   return ParsedResumeSchema.parse(json);
 }
+
+export type RenderFormat = 'pdf' | 'docx';
+
+export async function renderResume(
+  resume: ParsedResume,
+  accepted: Record<string, string> | null | undefined,
+  format: RenderFormat,
+): Promise<{ bytes: Buffer; contentType: string }> {
+  const path = format === 'pdf' ? '/render-pdf' : '/render-docx';
+  const res = await authedFetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ resume, accepted: accepted ?? undefined }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new PdfServiceError(`pdf-service ${path} failed: ${res.status}`, res.status, text);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  return {
+    bytes: Buffer.from(arrayBuffer),
+    contentType:
+      res.headers.get('content-type') ??
+      (format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+  };
+}
