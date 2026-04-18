@@ -27,6 +27,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @resumerx/shared build
       - run: pnpm --filter @resumerx/pdf-service test
       - run: pnpm --filter @resumerx/pdf-service build
 
