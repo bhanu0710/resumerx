@@ -33,12 +33,24 @@ export default async function RewritePage({ params }: { params: { id: string } }
             {r.summary.skipped} skipped · {r.summary.flagged} flagged by validator
           </p>
         </div>
-        <div className="flex gap-2 text-sm">
+        <div className="flex flex-wrap gap-2 text-sm">
+          <a
+            href={`/api/download/${r.id}?format=pdf`}
+            className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            download .pdf
+          </a>
+          <a
+            href={`/api/download/${r.id}?format=docx`}
+            className="rounded-md border border-border px-4 py-2 font-medium hover:border-foreground/40"
+          >
+            download .docx
+          </a>
           <Link
             href={`/r/${r.analysisId}`}
             className="rounded-md border border-border px-4 py-2 text-muted-foreground hover:text-foreground"
           >
-            ← back to analysis
+            ← back
           </Link>
         </div>
       </div>
