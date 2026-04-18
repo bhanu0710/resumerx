@@ -1,11 +1,41 @@
-# filled out in Phase 12
 name: Release
+
 on:
   push:
     tags:
       - 'v*'
+
 jobs:
-  placeholder:
+  github-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - run: echo "placeholder — real release workflow added in Phase 12"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: generate release notes
+        id: notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          prev=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -n1 || true)
+          {
+            echo "body<<EOF"
+            if [ -z "$prev" ]; then
+              git log --pretty=format:'- %s (%h)'
+            else
+              git log --pretty=format:'- %s (%h)' "${prev}..${TAG}"
+            fi
+            echo ""
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
