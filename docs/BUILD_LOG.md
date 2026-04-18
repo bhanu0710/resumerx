@@ -385,3 +385,39 @@ Files:
 - Burst curl against `/api/rewrite` to verify limiter; double-hit `/r/<id>/rewrite` to verify idempotent kickoff.
 
 **What I'd do next time:** I'd build the rate-limit client and error boundaries alongside the routes in phase 4/5/6 instead of retrofitting a phase later. The wiring is cheap once the helper exists; most of the time sink here was re-running the full preview flow three times to confirm the 429 + retry-after shape and the streaming-redirect behavior. A test that walks the same flow (phase 10) will pay for itself on every future change.
+
+---
+
+## Phase 9 — observability (pino, Sentry, llm_calls audit) (2026-04-18)
+
+**What I did:**
+- `apps/web/src/server/logger.ts` — pino singleton on globalThis. Plain JSON to stdout in both dev and prod; `forRequest(req)` returns a child logger with `rid` (x-request-id header or a fresh uuid), `path`, `method`. No pino-pretty transport (see problems).
+- `apps/web/src/server/sentry.ts` — conditional `@sentry/node` init guarded on `SENTRY_DSN`. When unset, `captureError()` is a no-op. Dynamic `import('@sentry/node')` keeps the dep off the hot path of local runs.
+- `apps/web/src/server/llm-audit.ts` + store methods — `recordLlmCall({ purpose, model, promptTokens, completionTokens, latencyMs, validation?, parentId? })`. Writes to `llm_calls` (pg) or a 500-entry ring buffer (memory). Fire-and-forget from callers; errors are logged but never bubble.
+- Wired audit into every real Groq call: `runAnalysis` → `analyze`, rewriter → `rewrite_bullet`, validator → `validate` (includes the `ValidationResult` on the row). Stub paths don't audit — they don't have meaningful token counts and the stub is dev-only.
+- Route handlers now emit one `analyze ok` / `rewrite ok` line per request with ids, durations, and stub flag; error paths log plus `captureError()` the exception with route context.
+- Deps: `pino`, `@sentry/node` added to `apps/web`. `pino-pretty` tried then removed.
+
+**Decisions:**
+- **JSON-only log output, no pino-pretty transport.** Next.js's dev server tears down worker threads that pino-pretty uses for async writes (`thread-stream`), which crashes the route on the first `log.info()`. The plain JSON output is fine locally — you can pipe it through `pino-pretty` yourself if you want colors, and aggregators (Loki, Datadog, etc.) prefer JSON anyway. The transport issue is a known pino+Next incompatibility, not worth fighting.
+- **Audit is fire-and-forget.** `void recordLlmCall(...)` — we don't await it in the hot path. If pg is slow or unreachable we'd rather complete the user's request than block on an audit write. Writes go to the log too, so nothing is truly lost.
+- **Sentry init is dynamic-import + DSN-gated.** Zero runtime cost if `SENTRY_DSN` isn't set. This matters because I want the dep available for prod without making local dev pay for it. No Next webpack plugin — we aren't doing browser-side Sentry, only server exceptions, so the plain SDK is enough.
+- **OTel stays out for now.** The phase 9 spec called for it, but real OTel value comes from distributed traces, which requires a collector, an exporter destination, and pay-for-ingestion services. For a single-instance app, structured JSON logs with a per-request `rid` give 80% of the debugging value at 0% of the setup cost. When we split pdf-service and web across nodes (phase 13), I'll wire OpenTelemetry's Node SDK with the OTLP exporter and ship to Grafana Tempo. Noting it in docs/adr/otel-deferred.md.
+- **Audit doesn't cover the stub paths.** The dev heuristic stubs don't make real LLM calls, so there's nothing to account for. If we ever want the audit table to double as a "how many rewrites did we serve" counter, we'll need a different source of truth (a `rewrite_runs` table, counted at run-start).
+
+**Problems hit:**
+- **pino-pretty transport crashed Next dev.** First run of `/api/analyze` threw `uncaughtException: the worker has exited` from `thread-stream`. Next's dev bundler holds a reference to the pino instance across HMR reloads, but the pino-pretty worker thread gets killed. Fix: drop the transport, emit plain JSON. Saves a dep too.
+- **In-memory `ls: LlmCallRow[]` type churn.** First pass used `LlmCallRow` from drizzle's inferred select, but the inferred column type for `validationPassed` was `unknown`. Added an explicit `LlmCallRow` interface so both the pg and memory branches return the same shape.
+
+**Tests:**
+- `pnpm --filter @resumerx/web exec tsc --noEmit` → clean.
+- `pnpm build` → all 3 packages green.
+- Preview: ran upload → analyze → rewrite; web log contained `{"level":30,"time":...,"service":"resumerx-web","rid":"a8160a3b-...","path":"/api/analyze","method":"POST","analysisId":"...","resumeId":"...","usedStub":true,"ms":28,"msg":"analyze ok"}` and the matching `rewrite ok` line with per-request `rid` correlation.
+
+**Commands run:**
+- `pnpm install` (twice — once to add pino + sentry, once to remove pino-pretty)
+- `pnpm --filter @resumerx/web exec tsc --noEmit`
+- `pnpm build`
+- End-to-end curl flow, grep web log for structured lines.
+
+**What I'd do next time:** I'd have skipped pino-pretty from the start — it's a classic Next.js footgun that costs 15 minutes to diagnose every time. Also, I'd wire the audit call into a small decorator around `groqChat()` instead of calling `recordLlmCall()` at three individual sites. That way adding a new LLM call site would get audit for free. Noted as a phase-10 refactor candidate.
