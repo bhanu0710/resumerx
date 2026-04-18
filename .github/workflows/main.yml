@@ -2,7 +2,7 @@ name: Deploy pdf-service
 
 # Vercel's git integration handles web deploys automatically on push to
 # develop (staging) and main (production). This workflow only owns the
-# pdf-service sidecar on Fly — Vercel is intentionally not touched here.
+# pdf-service sidecar on Cloud Run — Vercel is intentionally not touched here.
 
 on:
   push:
@@ -34,16 +34,25 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    env:
-      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
       - name: deploy (${{ github.ref_name }})
-        working-directory: apps/pdf-service
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
-            flyctl deploy --remote-only --app resumerx-pdf-prod
+            SERVICE=resumerx-pdf-prod
           else
-            flyctl deploy --remote-only --app resumerx-pdf-staging
+            SERVICE=resumerx-pdf-staging
           fi
+          gcloud run deploy "$SERVICE" \
+            --source apps/pdf-service \
+            --region us-central1 \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --quiet
