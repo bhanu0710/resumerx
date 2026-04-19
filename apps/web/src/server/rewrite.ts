@@ -59,24 +59,31 @@ export function collectBullets(parsed: ParsedResume): BulletTarget[] {
 }
 
 function rewriterSystemPrompt(jdKeywords: string[]): string {
-  return `You rewrite a single resume bullet using this formula:
+  return `You rewrite a single resume bullet to the industry-standard XYZ format used at Google, Meta, and top tech companies:
 
-  ACTION VERB + TASK + MEASURABLE RESULT
+  "Accomplished [X] as measured by [Y], by doing [Z]"
 
-Examples of the shape you want:
-- "Built a checkout service handling 12k req/min, cutting p99 latency from 900ms to 180ms"
-- "Led 4-person migration of 60 services off Mongo, saving $14k/mo in hosting"
-- "Shipped onboarding redesign that lifted day-7 activation from 31% to 44%"
+Operationally this means every bullet must contain three components:
+  ACTION VERB + TASK/HOW + MEASURABLE RESULT (scope, %, $, time, count)
+
+Canonical examples a Google/Amazon recruiter would rate top-10%:
+- "Built checkout service handling 12k req/min, cutting p99 latency from 900ms to 180ms by introducing request coalescing"
+- "Led 4-engineer migration of 60 services off Mongo to Postgres, saving $14k/mo in hosting and eliminating nightly replication lag"
+- "Shipped onboarding redesign that lifted day-7 activation from 31% to 44% across 2M monthly signups"
+- "Reduced CI build time from 28min to 6min by parallelizing test shards, unblocking 80 engineers"
+
+Length target: 1–2 lines when rendered (roughly 15–28 words). Longer bullets get skimmed past.
 
 ABSOLUTE RULES — breaking any of these makes the product useless:
-1. Do NOT invent facts. If the original says "worked on", don't write "led".
+1. Do NOT invent facts. If the original says "worked on", don't upgrade to "led".
 2. Do NOT invent metrics. If the original has no numbers, DO NOT make them up.
-3. If the original lacks a measurable result, DO NOT skip — rewrite Action + Task as strongly as you can AND put a question in "reasoning" that the user can answer to add a real metric. Example reasoning: "Ask yourself: how many users did this affect? What was the latency before/after? That number turns this bullet into a top-10% bullet."
-4. Do NOT add technologies, tools, or scope not in the original.
+3. If the original lacks a measurable result, rewrite Action + Task as strongly as you can AND phrase the "reasoning" field as a SPECIFIC question the user can answer to add a real metric. Example: "What was latency before vs after? How many users did this affect? A number here turns this into a top-10% bullet."
+4. Do NOT add technologies, tools, scope, team size, or seniority not in the original.
 5. Keep the rewrite length within ±20% of the original.
-6. Start with a concrete action verb (built, shipped, led, reduced, owned, migrated, designed). Avoid weak openers (worked, helped, assisted, was responsible for).
+6. Start with a strong past-tense action verb from this industry-standard list: Built, Shipped, Led, Drove, Designed, Architected, Reduced, Cut, Grew, Launched, Migrated, Scaled, Owned, Delivered, Automated, Optimized, Refactored, Unblocked, Mentored. BANNED weak openers: worked on, helped, assisted with, was responsible for, participated in, contributed to, involved in, tasked with.
 7. Weave in a JD keyword ONLY if the original work honestly covers it. Never force-fit.
-8. Only use skipped: true if the original is already in Action + Task + Measurable Result form and cannot be improved — this should be rare.
+8. One idea per bullet. If the original crams two accomplishments together, pick the stronger one.
+9. Only use skipped: true if the original is already in perfect XYZ form — this should be rare.
 
 JD keywords you may weave in where honest: ${jdKeywords.join(', ') || '(none specified)'}
 
@@ -292,13 +299,27 @@ export function selectJdKeywords(analysisKeywords: {
 }
 
 function sectionRewriterPrompt(): string {
-  return `You rewrite a candidate's resume SUMMARY and SKILLS section so they sound like someone who belongs in the industry implied by the job description — not like a generic applicant.
+  return `You rewrite a candidate's resume SUMMARY and SKILLS section to industry-standard quality — the voice used at Google, Amazon, Meta, Stripe, and other tier-1 employers in the industry implied by the JD.
 
-Step 1: from the JD, infer the industry and 2-3 representative top companies in that industry (e.g. "fintech → Stripe, Plaid, Ramp"; "infra SaaS → Vercel, Supabase, Netlify"; "ml platforms → Anyscale, Modal, Weights & Biases"). Record these in "industryInferred" and "referenceCompanies".
+Step 1: from the JD, infer the industry and 2-3 representative top companies (e.g. "fintech → Stripe, Plaid, Ramp"; "infra SaaS → Vercel, Supabase, Netlify"; "ml platforms → Anthropic, Modal, Weights & Biases"). Record in "industryInferred" and "referenceCompanies".
 
-Step 2: rewrite the summary in the voice those companies use in their engineering/product job posts and eng blog — concrete, outcome-oriented, specific tech, no HR-speak. 2-4 sentences.
+Step 2: rewrite the summary to the industry-standard Professional Summary format:
+  [Role + years] | [Core domain/stack proven by resume] | [1-2 strongest outcomes from resume]
+  - Exactly 2-3 sentences (never more — recruiters skim the first 6 seconds).
+  - 40-60 words total.
+  - Third person implied (no "I", no "My").
+  - No clichés: "passionate", "driven", "results-oriented", "proven track record", "seasoned", "dynamic", "motivated", "hardworking", "team player".
+  - Open with role + seniority + years (e.g. "Senior backend engineer with 6 years building...").
+  - Name concrete tech/domains the resume actually proves.
+  - End with the candidate's single strongest outcome pattern.
 
-Step 3: rewrite the skills list so it reads like someone senior in that industry would list them — group by capability, drop truly generic items ("Microsoft Office", "teamwork"), keep what's proven by the resume. Keep it a flat array of strings; do not add skills the resume does not support.
+Step 3: rewrite the skills list to industry-standard format:
+  - 8-20 items total — more signals unfocused, fewer signals thin.
+  - Hard skills only. Drop generic soft skills ("teamwork", "communication", "leadership") — those belong in bullets, not skills.
+  - Drop obsolete/irrelevant ("Microsoft Office", "Windows", "Internet"), drop vague ("problem solving").
+  - Order by relevance to the JD.
+  - Use canonical names: "JavaScript" not "JS", "PostgreSQL" not "Postgres DB", "Kubernetes" not "K8s" (unless the resume uses K8s).
+  - Keep only skills the resume genuinely demonstrates.
 
 ABSOLUTE RULES:
 - Do NOT invent experience, companies, years, or tools the resume does not already mention.
@@ -315,18 +336,23 @@ Return valid JSON (no markdown):
 }
 
 function finalReviewPrompt(): string {
-  return `You are doing a final polish pass on a resume. Find and replace:
-- tense inconsistencies (past-tense bullets mixed with present-tense under a finished role)
-- clichés and overused phrases ("team player", "hardworking", "self-starter", "passionate about", "results-driven", "detail-oriented", "go-getter", "synergy", "think outside the box")
-- phrases so generic they could describe anyone ("helped the team", "various projects", "multiple stakeholders")
-- weak verbs that survived the rewrite pass ("worked on", "was responsible for", "assisted with")
-- buzzword salad that signals nothing concrete
+  return `You are doing a final polish pass against industry resume standards used at Google, Amazon, Meta, and top consultancies. Find and replace:
 
-For each finding, propose specific, powerful language grounded in what the resume already shows.
+- TENSE: current role bullets in present tense, past roles in past tense; never mix within a single role. Flag every deviation.
+- CLICHÉS (banned industry-wide): "team player", "hardworking", "self-starter", "passionate about", "results-driven", "detail-oriented", "go-getter", "synergy", "think outside the box", "proven track record", "seasoned professional", "dynamic individual", "strong communicator", "excellent interpersonal skills", "thought leader", "rockstar", "ninja", "guru", "world-class".
+- GENERIC FILLER (describes anyone): "helped the team", "various projects", "multiple stakeholders", "cross-functional collaboration" (without specifics), "end-to-end", "leveraged", "utilized" (use "used"), "facilitated", "spearheaded", "orchestrated" (when "led" is honest).
+- WEAK VERBS: "worked on", "was responsible for", "assisted with", "participated in", "involved in", "contributed to", "tasked with", "handled".
+- BUZZWORD SALAD: strings of adjectives with no object ("innovative, strategic, results-oriented professional") — replace with concrete outcomes.
+- FIRST PERSON: "I built", "my project", "my team" — resumes are implicit third-person; strip.
+- PASSIVE VOICE in accomplishments: "was built by me" → "built".
+- MISSING QUANTIFICATION on accomplishments that clearly had scale (flag as "generic" with a question in reason).
+- INCONSISTENT PUNCTUATION: bullets ending in periods vs. not (flag if mixed — industry standard is no trailing period on bullet points, but consistency matters more than the choice).
+
+For each finding, propose specific language grounded in what the resume actually shows. Replacement must preserve meaning.
 
 ABSOLUTE RULES:
-- Do NOT invent facts, numbers, or scope. Replacements must still be true to the original meaning.
-- Be surgical. 0-12 items total. No nitpicking that isn't a real readability or credibility issue.
+- Do NOT invent facts, numbers, or scope. Replacements must still be true to the original.
+- Be surgical. 0-12 items total. Prioritize highest-impact fixes (clichés + weak verbs in the first 1/3 of the resume matter most — that's where recruiters look).
 
 Return valid JSON (no markdown):
 {

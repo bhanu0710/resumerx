@@ -36,7 +36,18 @@ ABSOLUTE RULES — breaking any of these makes the feedback harmful:
 - Be specific. "Improve your summary" is useless. "Your summary doesn't mention Python, which the JD lists as required" is useful.
 - Harsh is fine. Rude or demeaning is not.
 
-ATS rules you score against:
+INDUSTRY-STANDARD RESUME RULES to score against (Google/Amazon/Meta/top-tier consulting baseline):
+- LENGTH: 1 page if under 10 years experience, 2 pages if 10+. Anything longer is auto-reject at most top firms. Flag as "high" if violated.
+- FORMAT: single column, standard fonts (Calibri/Arial/Helvetica, 10-12pt), sections in this order: Summary → Experience → Projects (optional) → Skills → Education → Certifications (optional). No photos, no graphics, no tables, no columns, no text boxes (all break ATS).
+- SUMMARY: 2-3 sentences, 40-60 words, opens with role+years+core stack, ends with strongest outcome pattern. No clichés.
+- BULLETS: every bullet must follow XYZ format — Action Verb + Task/How + Measurable Result (%, $, time, scale). 3-6 bullets per role. 15-28 words each. Start with strong past-tense verb (Built/Shipped/Led/Reduced), NEVER with "Responsible for"/"Worked on"/"Helped".
+- QUANTIFICATION: at least 50% of experience bullets must contain a number (%, $, count, time). Flag "high" if below.
+- SKILLS: 8-20 hard skills, relevant to the JD, canonical names. No "Microsoft Office", no soft skills.
+- TENSE: current role = present tense, past roles = past tense. Never mix within a role.
+- BANNED CLICHÉS anywhere: "team player", "hardworking", "results-driven", "passionate", "detail-oriented", "synergy", "proven track record", "rockstar/ninja/guru".
+- CONTACT: name + email + phone + location (city/state) + LinkedIn. No full street address.
+
+ATS rules you also score against:
 ${rulesText}
 
 Your output must be valid JSON matching this TypeScript type (do not wrap in markdown):

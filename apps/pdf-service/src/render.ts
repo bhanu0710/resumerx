@@ -199,7 +199,9 @@ function sectionHeader(
 }
 
 // Renders the title on the left and right-string on the same baseline right-aligned.
-// Uses absolute coordinates so we don't depend on tab stops (pdfkit has none).
+// We measure the right-text width and render the left column with exact width so
+// pdfkit's internal cursor tracks correctly (no manual doc.y manipulation, which
+// breaks across page boundaries).
 function roleLine(
   doc: PDFKit.PDFDocument,
   leftText: string,
@@ -207,46 +209,54 @@ function roleLine(
   left: number,
   right: number,
 ): void {
-  const y = doc.y;
   const width = right - left;
-  // reserve ~28% on the right for dates — enough for "Aug 2019 – Present · SF, CA" in 9.5pt
-  const rightBlockWidth = width * 0.32;
-  const leftBlockWidth = width - rightBlockWidth - 6;
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(11)
-    .fillColor('#000')
-    .text(leftText, left, y, { width: leftBlockWidth, lineBreak: false, ellipsis: true });
-  const leftEndY = doc.y;
+  const startY = doc.y;
+
+  // Measure right text in its own font so we can size the left column correctly.
+  let rightWidth = 0;
+  if (rightText) {
+    doc.font('Helvetica').fontSize(9.5);
+    rightWidth = doc.widthOfString(rightText);
+  }
+  const gap = 8;
+  const leftWidth = Math.max(40, width - rightWidth - gap);
+
+  // Draw right text first at absolute position (no flow advance), then left text
+  // via flow so doc.y lands correctly on its final line.
   if (rightText) {
     doc
       .font('Helvetica')
       .fontSize(9.5)
       .fillColor(COLOR_MUTED)
-      .text(rightText, left + leftBlockWidth + 6, y, {
-        width: rightBlockWidth,
+      .text(rightText, left + leftWidth + gap, startY, {
+        width: rightWidth,
         align: 'right',
         lineBreak: false,
-        ellipsis: true,
       });
   }
-  // reset y to whichever column ended lower — usually leftEndY
-  doc.y = leftEndY;
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .fillColor('#000')
+    .text(leftText, left, startY, { width: leftWidth, lineBreak: false, ellipsis: true });
   doc.fillColor('#000');
 }
 
 function bullet(doc: PDFKit.PDFDocument, text: string, left: number, width: number): void {
   const indent = 12;
-  const y = doc.y;
   doc.font('Helvetica').fontSize(10).fillColor('#000');
-  // bullet glyph
-  doc.text('•', left, y, { lineBreak: false, width: indent });
-  // body — pdfkit handles wrapping under the x start since we pass explicit x
-  doc.text(text, left + indent, y, {
-    width: width - indent,
+  // flow-based: let pdfkit manage y and page breaks. Prefix bullet glyph and use
+  // indent so wraps align under the first letter.
+  doc.text(`•  ${text}`, left, doc.y, {
+    width,
     align: 'left',
     lineGap: 1.5,
+    indent: 0,
+    paragraphGap: 0,
   });
+  // Note: pdfkit doesn't natively do hanging indent, but the visual difference
+  // on typical bullet lengths is negligible and safer than absolute-xy hacks
+  // that dropped bullets across page breaks.
 }
 
 // --- DOCX (docx) ---------------------------------------------------------
