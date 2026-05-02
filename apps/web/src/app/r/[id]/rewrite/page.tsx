@@ -29,6 +29,7 @@ export default async function RewriteKickoff({ params }: { params: { id: string 
     parsed: resume.parsed,
     jdKeywords: selectJdKeywords(analysis.result.keywordMatch),
     jobDescription: analysis.jobDescription,
+    analysis: analysis.result,
   });
   await store.insertRewrite({
     id: result.id,

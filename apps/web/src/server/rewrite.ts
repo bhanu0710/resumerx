@@ -8,11 +8,14 @@ import {
   rewriteId as newRewriteId,
   REWRITE_LENGTH_DRIFT_MAX,
   REWRITE_MAX_BULLETS_PER_REQUEST,
+  type Analysis,
+  type ATSIssue,
   type BulletRewrite,
   type FinalReview,
   type ParsedResume,
   type RewriteLLMResponse,
   type RewriteResult,
+  type SectionFeedback,
   type SectionRewrite,
   type ValidationResult,
   type ValidationFlag,
@@ -29,30 +32,128 @@ export interface BulletTarget {
   parentId: string;
   parentLabel: string; // "Senior SWE @ Acme" | "Project: FooBar"
   original: string;
+  // Specific analysis findings the rewriter MUST act on for this bullet.
+  // Built by matching atsIssue.location and section suggestions against the
+  // bullet's role context. Empty for bullets the analysis didn't single out.
+  guidance?: string[];
 }
 
-export function collectBullets(parsed: ParsedResume): BulletTarget[] {
+// Match analysis findings to a specific bullet/role. Returns an array of
+// concrete instructions like:
+//   "Analysis flagged: bullets at this role start with 'Responsible for' — fix that"
+//   "Analysis suggests: Restructure: 'helped onboard users' → 'drove onboarding for 2k users'"
+// Only findings that clearly reference this bullet's role or text are included
+// — we don't dump every analysis issue onto every bullet (that would dilute the prompt).
+function buildBulletGuidance(
+  target: Omit<BulletTarget, 'guidance'>,
+  parentLabel: string,
+  parentRoleText: string, // "Senior SWE Acme" lowercased — for substring match against atsIssue.location
+  bulletTextLower: string,
+  atsIssues: ATSIssue[],
+  sectionFeedback: SectionFeedback[],
+): string[] {
+  const out: string[] = [];
+
+  // 1. ATS issues whose location references this bullet's role
+  for (const issue of atsIssues) {
+    if (!issue.location) continue;
+    const loc = issue.location.toLowerCase();
+    if (
+      loc.includes(parentRoleText) ||
+      parentRoleText.split(/\s+/).some((w) => w.length >= 4 && loc.includes(w))
+    ) {
+      out.push(`[${issue.severity}] ${issue.issue} → fix: ${issue.fix}`);
+    }
+  }
+
+  // 2. Section feedback for Experience / Projects — pull suggestions whose text
+  // references this bullet's role or quotes phrases from the bullet itself.
+  const targetSectionName = target.section === 'experience' ? 'experience' : 'projects';
+  for (const sec of sectionFeedback) {
+    if (!sec.name.toLowerCase().includes(targetSectionName)) continue;
+    for (const sug of sec.suggestions ?? []) {
+      const sugLower = sug.toLowerCase();
+      // include if the suggestion mentions a long-enough word from the role label,
+      // or quotes a 6+ char chunk of the original bullet
+      const refsRole = parentRoleText
+        .split(/\s+/)
+        .some((w) => w.length >= 4 && sugLower.includes(w));
+      const refsBullet = (() => {
+        // crude phrase match: any 4+ word substring of the original that appears in the suggestion
+        const words = bulletTextLower.split(/\s+/);
+        for (let i = 0; i + 4 <= words.length; i++) {
+          const phrase = words.slice(i, i + 4).join(' ');
+          if (phrase.length >= 12 && sugLower.includes(phrase)) return true;
+        }
+        return false;
+      })();
+      if (refsRole || refsBullet || sug.startsWith('Restructure:') || sug.startsWith('Highlight:')) {
+        out.push(`Suggestion: ${sug}`);
+      }
+    }
+    // also weaknesses for the same section if they reference this role
+    for (const w of sec.weaknesses ?? []) {
+      const wLower = w.toLowerCase();
+      const refsRole = parentRoleText
+        .split(/\s+/)
+        .some((word) => word.length >= 4 && wLower.includes(word));
+      if (refsRole) {
+        out.push(`Weakness: ${w}`);
+      }
+    }
+  }
+
+  // dedupe + cap (a bullet rewrite prompt with 8 instructions is no better than 4)
+  return Array.from(new Set(out)).slice(0, 5);
+}
+
+export function collectBullets(parsed: ParsedResume, analysis?: Analysis): BulletTarget[] {
   const out: BulletTarget[] = [];
+  const atsIssues = analysis?.atsIssues ?? [];
+  const sectionFeedback = analysis?.sections ?? [];
+
   for (const exp of parsed.experience) {
+    const parentLabel = `${exp.title} @ ${exp.company}`;
+    const parentRoleText = `${exp.title} ${exp.company}`.toLowerCase();
     for (const b of exp.bullets) {
-      out.push({
+      const target: BulletTarget = {
         bulletId: b.id,
         section: 'experience',
         parentId: exp.id,
-        parentLabel: `${exp.title} @ ${exp.company}`,
+        parentLabel,
         original: b.text,
-      });
+      };
+      target.guidance = buildBulletGuidance(
+        target,
+        parentLabel,
+        parentRoleText,
+        b.text.toLowerCase(),
+        atsIssues,
+        sectionFeedback,
+      );
+      out.push(target);
     }
   }
   for (const proj of parsed.projects ?? []) {
+    const parentLabel = `Project: ${proj.name}`;
+    const parentRoleText = proj.name.toLowerCase();
     for (const b of proj.bullets) {
-      out.push({
+      const target: BulletTarget = {
         bulletId: b.id,
         section: 'projects',
         parentId: proj.id,
-        parentLabel: `Project: ${proj.name}`,
+        parentLabel,
         original: b.text,
-      });
+      };
+      target.guidance = buildBulletGuidance(
+        target,
+        parentLabel,
+        parentRoleText,
+        b.text.toLowerCase(),
+        atsIssues,
+        sectionFeedback,
+      );
+      out.push(target);
     }
   }
   return out;
@@ -87,11 +188,15 @@ ABSOLUTE RULES — breaking any of these makes the product useless:
 
 JD keywords you may weave in where honest: ${jdKeywords.join(', ') || '(none specified)'}
 
+The user message MAY include an "ANALYSIS FINDINGS" block listing specific issues the analysis already flagged for this bullet (weak verb, missing metric, suggested restructure, etc.). When that block is present, your rewrite is judged primarily on whether it ACTS ON those findings — not on generic XYZ improvements. If the findings say "Restructure: X → Y", produce something close to Y (subject to the no-fabrication rules). If the findings say "fix: rewrite this bullet to start with an action verb", do that. Generic-looking output that ignores the findings is a failed rewrite.
+
+In your "reasoning" field, briefly cite which finding(s) you addressed — e.g. "Addressed weak-opener flag by switching 'Responsible for' → 'Led'; kept scope unchanged."
+
 Return valid JSON matching this shape (no markdown):
 {
   "rewritten": string,
   "keywordsInjected": string[],
-  "reasoning": string (if the original had no metric, phrase this as a question to the user so they can add one),
+  "reasoning": string (cite the analysis findings you addressed; if no findings and no metric, phrase reasoning as a question the user can answer to add a real metric),
   "skipped": boolean,
   "skipReason"?: string
 }`;
@@ -129,6 +234,19 @@ function lengthDriftExceeded(original: string, rewritten: string): boolean {
   const b = rewritten.length;
   if (a === 0) return false;
   return Math.abs(b - a) / a > REWRITE_LENGTH_DRIFT_MAX;
+}
+
+// Build the per-bullet user message. The CRITICAL bit is the ANALYSIS
+// FINDINGS block — this is what tells the rewriter to actually act on what
+// the analysis already flagged for THIS specific bullet, instead of producing
+// generic XYZ output that ignores the diagnosis.
+function buildBulletUserPrompt(target: BulletTarget): string {
+  const guidance = target.guidance ?? [];
+  const guidanceBlock =
+    guidance.length > 0
+      ? `\n\nANALYSIS FINDINGS — YOU MUST ACT ON THESE for this exact bullet:\n${guidance.map((g, i) => `${i + 1}. ${g}`).join('\n')}\n\nThe rewrite is judged primarily on whether it addresses the findings above. A rewrite that ignores them is a failed rewrite.`
+      : '';
+  return `Original bullet:\n"${target.original}"\n\nContext: ${target.parentLabel}${guidanceBlock}\n\nReturn only JSON.`;
 }
 
 // Heuristic fallback — runs when GROQ_API_KEY is missing. Keeps the dev
@@ -180,7 +298,7 @@ async function callRewriter(
       { role: 'system', content: rewriterSystemPrompt(jdKeywords) },
       {
         role: 'user',
-        content: `Original bullet:\n"${target.original}"\n\nContext: ${target.parentLabel}\n\nReturn only JSON.`,
+        content: buildBulletUserPrompt(target),
       },
     ],
   });
@@ -382,12 +500,38 @@ function resumeSnapshotForPrompt(parsed: ParsedResume): string {
 ${exp || '(none)'}`;
 }
 
+// Pull the analysis's feedback for Summary and Skills specifically so the
+// section rewriter knows what the analysis already flagged for those sections.
+function summarizeSectionFindings(analysis?: Analysis): string {
+  if (!analysis) return '';
+  const wanted = ['summary', 'skills'];
+  const lines: string[] = [];
+  for (const sec of analysis.sections) {
+    if (!wanted.some((w) => sec.name.toLowerCase().includes(w))) continue;
+    if (sec.weaknesses?.length) {
+      for (const w of sec.weaknesses) lines.push(`[${sec.name} weakness] ${w}`);
+    }
+    if (sec.suggestions?.length) {
+      for (const s of sec.suggestions) lines.push(`[${sec.name} suggestion] ${s}`);
+    }
+  }
+  for (const issue of analysis.atsIssues) {
+    const loc = (issue.location ?? '').toLowerCase();
+    if (loc.includes('summary') || loc.includes('skills') || loc === 'top') {
+      lines.push(`[ats issue ${issue.severity}] ${issue.issue} → fix: ${issue.fix}`);
+    }
+  }
+  return lines.length === 0 ? '' : `\n\n## Analysis findings to act on\n${lines.join('\n')}`;
+}
+
 async function rewriteSummaryAndSkills(
   parsed: ParsedResume,
   jobDescription: string,
+  analysis?: Analysis,
 ): Promise<SectionRewrite | undefined> {
   if (!env.groq.apiKey) return undefined;
   try {
+    const findings = summarizeSectionFindings(analysis);
     const res = await groqChat({
       model: env.groq.rewriteModel,
       temperature: 0.4,
@@ -397,7 +541,7 @@ async function rewriteSummaryAndSkills(
         { role: 'system', content: sectionRewriterPrompt() },
         {
           role: 'user',
-          content: `## Job description\n${jobDescription}\n\n## Resume\n${resumeSnapshotForPrompt(parsed)}\n\nReturn only JSON.`,
+          content: `## Job description\n${jobDescription}\n\n## Resume\n${resumeSnapshotForPrompt(parsed)}${findings}\n\nWhen the "Analysis findings to act on" block is present, your rewrite is judged primarily on whether it addresses those findings. Return only JSON.`,
         },
       ],
     });
@@ -450,6 +594,10 @@ export interface RunRewriteInput {
   jdKeywords: string[];
   jobDescription?: string; // required for section rewrite; if absent, section pass is skipped
   bulletIds?: string[]; // if undefined → rewrite all
+  // The full analysis result so the rewriter can act on the specific issues
+  // and suggestions the analysis flagged (per-bullet guidance + section
+  // feedback for the section rewriter).
+  analysis?: Analysis;
 }
 
 async function runBulletRewrites(
@@ -490,8 +638,12 @@ export async function runRewrite({
   jdKeywords,
   jobDescription,
   bulletIds,
+  analysis,
 }: RunRewriteInput): Promise<RewriteResult> {
-  const all = collectBullets(parsed);
+  // Pass the analysis through so each bullet target carries the specific
+  // findings the analysis flagged for it. This is what makes the rewrite
+  // address the diagnosis instead of producing generic XYZ output.
+  const all = collectBullets(parsed, analysis);
   const targets = bulletIds
     ? all.filter((t) => bulletIds.includes(t.bulletId))
     : all.slice(0, REWRITE_MAX_BULLETS_PER_REQUEST);
@@ -500,7 +652,9 @@ export async function runRewrite({
   // rewrite + final review each cost one extra LLM call.
   const [bulletResults, sectionRewrites, finalReview] = await Promise.all([
     runBulletRewrites(targets, jdKeywords),
-    jobDescription ? rewriteSummaryAndSkills(parsed, jobDescription) : Promise.resolve(undefined),
+    jobDescription
+      ? rewriteSummaryAndSkills(parsed, jobDescription, analysis)
+      : Promise.resolve(undefined),
     runFinalReview(parsed),
   ]);
 

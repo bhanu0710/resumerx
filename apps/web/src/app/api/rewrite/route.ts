@@ -52,6 +52,7 @@ export async function POST(req: Request) {
       jdKeywords,
       jobDescription: analysis.jobDescription,
       bulletIds: body.bulletIds,
+      analysis: analysis.result,
     });
   } catch (err) {
     log.error({ err, analysisId: body.analysisId }, 'rewrite_failed');
