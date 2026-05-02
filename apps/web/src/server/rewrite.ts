@@ -236,17 +236,56 @@ function lengthDriftExceeded(original: string, rewritten: string): boolean {
   return Math.abs(b - a) / a > REWRITE_LENGTH_DRIFT_MAX;
 }
 
-// Build the per-bullet user message. The CRITICAL bit is the ANALYSIS
-// FINDINGS block — this is what tells the rewriter to actually act on what
-// the analysis already flagged for THIS specific bullet, instead of producing
-// generic XYZ output that ignores the diagnosis.
-function buildBulletUserPrompt(target: BulletTarget): string {
+// Compact summary of the whole analysis the rewriter sees on EVERY bullet.
+// Without this, bullets that didn't get a specific guidance match would fall
+// back to the generic XYZ prompt and produce output that ignores the
+// diagnosis entirely.
+function buildAnalysisContextBlock(analysis?: Analysis): string {
+  if (!analysis) return '';
+  const parts: string[] = [];
+
+  const highIssues = analysis.atsIssues.filter((i) => i.severity === 'high').slice(0, 4);
+  const medIssues = analysis.atsIssues.filter((i) => i.severity === 'med').slice(0, 4);
+  if (highIssues.length || medIssues.length) {
+    const issuesText = [...highIssues, ...medIssues]
+      .map((i) => `- [${i.severity}] ${i.issue} → fix: ${i.fix}${i.location ? ` (loc: ${i.location})` : ''}`)
+      .join('\n');
+    parts.push(`Top ATS issues from analysis:\n${issuesText}`);
+  }
+
+  const expSec = analysis.sections.find((s) => /experience/i.test(s.name));
+  if (expSec && (expSec.weaknesses.length || expSec.suggestions.length)) {
+    const items = [
+      ...expSec.weaknesses.slice(0, 3).map((w) => `- weakness: ${w}`),
+      ...expSec.suggestions.slice(0, 4).map((s) => `- suggestion: ${s}`),
+    ].join('\n');
+    parts.push(`Experience-section feedback:\n${items}`);
+  }
+
+  if (analysis.keywordMatch.missing.length) {
+    parts.push(
+      `Missing JD keywords (weave in ONLY where the original honestly covers them): ${analysis.keywordMatch.missing.slice(0, 10).join(', ')}`,
+    );
+  }
+
+  return parts.length === 0 ? '' : `\n\n## Analysis context (act on this)\n${parts.join('\n\n')}`;
+}
+
+// Per-bullet user message. Combines: (a) the original bullet, (b) the global
+// analysis context (always present when analysis exists), and (c) the per-bullet
+// specific findings when our matcher found any. The rewriter is judged on
+// whether it addresses both layers.
+function buildBulletUserPrompt(target: BulletTarget, analysis?: Analysis): string {
   const guidance = target.guidance ?? [];
+  const ctx = buildAnalysisContextBlock(analysis);
   const guidanceBlock =
     guidance.length > 0
-      ? `\n\nANALYSIS FINDINGS — YOU MUST ACT ON THESE for this exact bullet:\n${guidance.map((g, i) => `${i + 1}. ${g}`).join('\n')}\n\nThe rewrite is judged primarily on whether it addresses the findings above. A rewrite that ignores them is a failed rewrite.`
+      ? `\n\n## Specific findings for THIS bullet (highest priority)\n${guidance.map((g, i) => `${i + 1}. ${g}`).join('\n')}`
       : '';
-  return `Original bullet:\n"${target.original}"\n\nContext: ${target.parentLabel}${guidanceBlock}\n\nReturn only JSON.`;
+  const trailer = ctx || guidanceBlock
+    ? '\n\nThe rewrite is judged on whether it addresses the analysis context and specific findings above. A rewrite that ignores them is a failed rewrite. Cite which finding(s) you addressed in "reasoning". Return only JSON.'
+    : '\n\nReturn only JSON.';
+  return `Original bullet:\n"${target.original}"\n\nContext: ${target.parentLabel}${ctx}${guidanceBlock}${trailer}`;
 }
 
 // Heuristic fallback — runs when GROQ_API_KEY is missing. Keeps the dev
@@ -285,6 +324,7 @@ function stubRewrite(target: BulletTarget, jdKeywords: string[]): RewriteLLMResp
 async function callRewriter(
   target: BulletTarget,
   jdKeywords: string[],
+  analysis?: Analysis,
 ): Promise<{ resp: RewriteLLMResponse; stub: boolean }> {
   if (!env.groq.apiKey) {
     return { resp: stubRewrite(target, jdKeywords), stub: true };
@@ -298,7 +338,7 @@ async function callRewriter(
       { role: 'system', content: rewriterSystemPrompt(jdKeywords) },
       {
         role: 'user',
-        content: buildBulletUserPrompt(target),
+        content: buildBulletUserPrompt(target, analysis),
       },
     ],
   });
@@ -359,8 +399,9 @@ async function callValidator(original: string, rewritten: string): Promise<Valid
 export async function rewriteBullet(
   target: BulletTarget,
   jdKeywords: string[],
+  analysis?: Analysis,
 ): Promise<BulletRewrite> {
-  const { resp } = await callRewriter(target, jdKeywords);
+  const { resp } = await callRewriter(target, jdKeywords, analysis);
 
   // if the model skipped, return a pass-through with the original
   if (resp.skipped) {
@@ -603,6 +644,7 @@ export interface RunRewriteInput {
 async function runBulletRewrites(
   targets: BulletTarget[],
   jdKeywords: string[],
+  analysis?: Analysis,
 ): Promise<BulletRewrite[]> {
   const CONCURRENCY = 4;
   const results: BulletRewrite[] = [];
@@ -611,7 +653,7 @@ async function runBulletRewrites(
     const batchResults = await Promise.all(
       batch.map(async (t) => {
         try {
-          return await rewriteBullet(t, jdKeywords);
+          return await rewriteBullet(t, jdKeywords, analysis);
         } catch (err) {
           const msg = err instanceof GroqError ? err.message : (err as Error).message;
           return BulletRewriteSchema.parse({
@@ -651,7 +693,7 @@ export async function runRewrite({
   // three passes run in parallel — bullet rewrites are the heavy one; section
   // rewrite + final review each cost one extra LLM call.
   const [bulletResults, sectionRewrites, finalReview] = await Promise.all([
-    runBulletRewrites(targets, jdKeywords),
+    runBulletRewrites(targets, jdKeywords, analysis),
     jobDescription
       ? rewriteSummaryAndSkills(parsed, jobDescription, analysis)
       : Promise.resolve(undefined),
