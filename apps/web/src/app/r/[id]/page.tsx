@@ -14,7 +14,13 @@ import type {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export default async function ResultsPage({ params }: { params: { id: string } }) {
+export default async function ResultsPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { rewriteError?: string };
+}) {
   if (params.id === 'example') {
     return (
       <div className="container py-16">
@@ -39,6 +45,14 @@ export default async function ResultsPage({ params }: { params: { id: string } }
 
   const resume = await store.getResume(row.resumeId);
   const a: Analysis = row.result;
+
+  // Diagnostic counts for the no-bullets banner
+  const expRoles = resume?.parsed.experience.length ?? 0;
+  const projCount = resume?.parsed.projects?.length ?? 0;
+  const totalBullets =
+    (resume?.parsed.experience.reduce((n, e) => n + e.bullets.length, 0) ?? 0) +
+    (resume?.parsed.projects?.reduce((n, p) => n + p.bullets.length, 0) ?? 0);
+  const rewriteError = searchParams?.rewriteError;
 
   return (
     <div className="container py-10 md:py-14">
@@ -68,6 +82,25 @@ export default async function ResultsPage({ params }: { params: { id: string } }
           </Link>
         </div>
       </div>
+
+      {rewriteError === 'no_bullets' && (
+        <div className="border-destructive/40 bg-destructive/5 mb-6 rounded-md border p-4 text-sm">
+          <p className="text-destructive font-medium">
+            We couldn&apos;t rewrite anything — your parsed resume has no bullets to rewrite.
+          </p>
+          <p className="text-muted-foreground mt-1">
+            Detected {expRoles} experience role{expRoles === 1 ? '' : 's'} and {projCount} project
+            {projCount === 1 ? '' : 's'}, with {totalBullets} total bullet
+            {totalBullets === 1 ? '' : 's'} across them. The rewriter only operates on Experience
+            and Projects bullets — Summary, Skills, Education and Certifications are never
+            rewritten.
+          </p>
+          <p className="text-muted-foreground mt-2">
+            Likely fix: re-upload your resume (the parser may have missed bullet markers), or
+            confirm your resume actually contains bullet points under each role.
+          </p>
+        </div>
+      )}
 
       <section className="grid gap-4 md:grid-cols-4">
         <ScoreCard label="overall" value={a.overallScore} />

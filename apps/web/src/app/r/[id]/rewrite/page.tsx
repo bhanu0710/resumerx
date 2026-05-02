@@ -39,6 +39,14 @@ export default async function RewriteKickoff({ params }: { params: { id: string 
     jobDescription: analysis.jobDescription,
     analysis: analysis.result,
   });
+
+  // Empty result = parsed resume has no bullets to rewrite. Don't persist
+  // an empty cache row (the next kickoff would just hit the same dead end).
+  // Send the user back to the analysis with a clear, actionable error banner.
+  if (result.bullets.length === 0) {
+    redirect(`/r/${params.id}?rewriteError=no_bullets`);
+  }
+
   await store.insertRewrite({
     id: result.id,
     analysisId: params.id,

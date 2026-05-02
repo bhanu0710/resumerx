@@ -691,12 +691,23 @@ export async function runRewrite({
     : all.slice(0, REWRITE_MAX_BULLETS_PER_REQUEST);
 
   if (targets.length === 0) {
-    // Hard error — caller is bullet-iding nothing, OR the parsed resume has
-    // no bullets in experience/projects. Either case means we shouldn't
-    // persist an empty rewrite row that the kickoff page would then cache.
-    throw new Error(
-      `runRewrite: no bullet targets — parsed.experience=${parsed.experience.length} roles, parsed.projects=${parsed.projects?.length ?? 0}, totalBullets=${all.length}, requestedIds=${bulletIds?.length ?? 'all'}`,
-    );
+    // Graceful no-op: the parsed resume has no bullets in experience/projects,
+    // OR the caller asked to rewrite a set of bulletIds that don't exist.
+    // Return an empty result with diagnostic info instead of throwing — the
+    // caller decides how to surface this to the user (the kickoff page
+    // redirects back to /r/[id] with an error flag; the API returns 200 with
+    // a clear summary). Throwing here causes a generic "Something went wrong"
+    // page on the server-component kickoff route, which is opaque to the user.
+    return {
+      id: newRewriteId(),
+      analysisId,
+      bullets: [],
+      sectionRewrites: undefined,
+      finalReview: undefined,
+      summary: { totalBullets: 0, rewritten: 0, skipped: 0, flagged: 0 },
+      predictedAtsScoreDelta: 0,
+      createdAt: new Date().toISOString(),
+    };
   }
 
   // three passes run in parallel — bullet rewrites are the heavy one; section
