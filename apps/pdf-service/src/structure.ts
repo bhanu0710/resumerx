@@ -11,15 +11,25 @@ import {
 // resumes don't follow a single format. This is a best-effort heuristic parser.
 // it handles maybe 70% of resumes cleanly — the analysis LLM smooths over the rest.
 
+// A "section heading" is a short standalone line whose alpha content is one of
+// the known section names. We allow trailing colons, decorative dashes, and
+// the line being short overall — but reject lines longer than ~40 chars so
+// that bullets containing the word "experience" don't get promoted to headings.
 const SECTION_ALIASES: Record<string, RegExp> = {
-  summary: /^\s*(summary|objective|profile|about)\s*$/i,
+  summary: /^[\s\W]*(summary|objective|profile|about\s+me|about)[\s\W]*$/i,
   experience:
-    /^\s*(experience|work experience|professional experience|employment|work history|career)\s*$/i,
-  education: /^\s*(education|academic background|academics|qualifications)\s*$/i,
-  skills: /^\s*(skills|technical skills|core competencies|tech stack|technologies)\s*$/i,
-  projects: /^\s*(projects|personal projects|side projects|portfolio)\s*$/i,
-  certifications: /^\s*(certifications?|licenses|certificates)\s*$/i,
+    /^[\s\W]*(experience|work\s+experience|professional\s+experience|employment(?:\s+history)?|work\s+history|career(?:\s+history)?|relevant\s+experience)[\s\W]*$/i,
+  education:
+    /^[\s\W]*(education|academic\s+background|academics|qualifications|educational\s+background)[\s\W]*$/i,
+  skills:
+    /^[\s\W]*(skills|technical\s+skills|core\s+competencies|tech\s+stack|technologies|expertise)[\s\W]*$/i,
+  projects:
+    /^[\s\W]*(projects|personal\s+projects|side\s+projects|portfolio|selected\s+projects|notable\s+projects)[\s\W]*$/i,
+  certifications: /^[\s\W]*(certifications?|licenses|certificates)[\s\W]*$/i,
 };
+
+// Length guard so bullet text never accidentally matches a section regex.
+const SECTION_HEADING_MAX_LEN = 40;
 
 const EMAIL_RE = /[\w.+-]+@[\w-]+(\.[\w-]+)+/;
 const PHONE_RE = /(\+?\d[\d\s\-().]{8,}\d)/;
@@ -104,10 +114,12 @@ function splitSections(lines: string[]): Record<string, string[]> {
 
   for (const line of lines) {
     let matchedSection: string | null = null;
-    for (const [name, re] of Object.entries(SECTION_ALIASES)) {
-      if (re.test(line)) {
-        matchedSection = name;
-        break;
+    if (line.length <= SECTION_HEADING_MAX_LEN) {
+      for (const [name, re] of Object.entries(SECTION_ALIASES)) {
+        if (re.test(line)) {
+          matchedSection = name;
+          break;
+        }
       }
     }
 
@@ -123,6 +135,21 @@ function splitSections(lines: string[]): Record<string, string[]> {
   }
 
   return sections;
+}
+
+// A line "looks like a role header" only when it has STRONG signal — a date
+// year and a separator/title pattern. We deliberately make this stricter than
+// "has a year somewhere" so that bullet lines mentioning "2022" don't get
+// promoted to new role headers.
+function looksLikeRoleHeader(line: string): boolean {
+  const hasYear = /\b(19|20)\d{2}\b/.test(line);
+  const hasPresentOrCurrent = /\b(present|current)\b/i.test(line);
+  const hasSeparator = /\s[—–|@]\s/.test(line);
+  const startsLowercase = /^[a-z]/.test(line); // bullets often start lowercase or with continuation
+  const tooLong = line.length > 140; // role headers are short; bullets can be long
+  if (startsLowercase || tooLong) return false;
+  // need date evidence OR a clear "Title — Company" separator + short length
+  return hasYear || hasPresentOrCurrent || (hasSeparator && line.length < 100);
 }
 
 function parseExperienceBlock(block: string[]): ExperienceItem[] {
@@ -141,18 +168,13 @@ function parseExperienceBlock(block: string[]): ExperienceItem[] {
     const line = block[i] ?? '';
     if (!line) continue;
 
+    // explicit bullet glyph → bullet
     if (BULLET_PREFIX.test(line)) {
       buffer.push(line.replace(BULLET_PREFIX, '').trim());
       continue;
     }
 
-    // heuristic: a line with a date range OR a "Title — Company" pattern starts a new role
-    const looksLikeRoleHeader =
-      /\b(19|20)\d{2}\b/.test(line) ||
-      /\s[—–-]\s/.test(line) ||
-      /\b(present|current)\b/i.test(line);
-
-    if (looksLikeRoleHeader && !BULLET_PREFIX.test(line)) {
+    if (looksLikeRoleHeader(line) && !currentItemSwallowsLine(currentItem, buffer, line)) {
       pushCurrent();
       buffer = [];
       const parsed = parseRoleHeader(line, block[i + 1] ?? '');
@@ -164,15 +186,29 @@ function parseExperienceBlock(block: string[]): ExperienceItem[] {
       continue;
     }
 
-    // otherwise: append to current item's context or skip
-    if (currentItem && buffer.length === 0) {
-      // first non-bullet line after header might be a location or date detail
-      // leave it alone for now
+    // Inside a role and the line isn't a header → treat as an implicit bullet.
+    // This rescues PDFs where the bullet glyphs were stripped by text
+    // extraction. Skip very short non-content lines (likely formatting noise).
+    if (currentItem && line.length >= 8) {
+      buffer.push(line);
     }
   }
 
   pushCurrent();
   return items;
+}
+
+// Edge case: if we've never opened a role yet, don't promote the first
+// header-shaped line into a header AND swallow it as a bullet — let the role
+// header path take it. This helper is currently a no-op (always false) but
+// kept as a hook in case we want to later treat lines that look like both
+// (e.g. "Built X — 2022") differently.
+function currentItemSwallowsLine(
+  _currentItem: ExperienceItem | null,
+  _buffer: string[],
+  _line: string,
+): boolean {
+  return false;
 }
 
 function parseRoleHeader(
@@ -230,6 +266,23 @@ function parseRoleHeader(
   return { company, title, startDate, endDate };
 }
 
+// Project headers tend to be short, Title-Cased, and don't start with a verb.
+// Description/bullet lines tend to be longer and often start with an action verb.
+// We use length + verb heuristics to distinguish without requiring a glyph.
+const ACTION_VERB_OPENERS =
+  /^(built|shipped|led|drove|designed|architected|reduced|cut|grew|launched|migrated|scaled|owned|delivered|automated|optimized|refactored|developed|implemented|created|integrated|improved|deployed|managed|wrote|engineered|configured|deployed|trained|tuned|added|fixed|debugged|analyzed|investigated|researched|introduced|set up|setup|orchestrated|spearheaded|established|maintained|coordinated|collaborated|worked|helped|assisted|contributed|participated|supported|enabled|streamlined|enhanced|generated|achieved|delivered|reduced|increased|decreased|improved|grew|expanded|defined|drafted|authored|reviewed|oversaw|presented|published|launched)\b/i;
+
+function looksLikeProjectHeader(line: string): boolean {
+  if (line.length > 70) return false;
+  if (ACTION_VERB_OPENERS.test(line)) return false;
+  // ends with a period or contains 4+ commas → likely a sentence/bullet
+  if (/\.$/.test(line) && !/v?\d+\.\d+$/.test(line)) return false;
+  if ((line.match(/,/g)?.length ?? 0) >= 3) return false;
+  // a project header typically has 1-8 words
+  const words = line.split(/\s+/).length;
+  return words >= 1 && words <= 9;
+}
+
 function parseProjectsBlock(block: string[]): ProjectItem[] {
   const items: ProjectItem[] = [];
   let currentItem: ProjectItem | null = null;
@@ -245,13 +298,14 @@ function parseProjectsBlock(block: string[]): ProjectItem[] {
   for (const line of block) {
     if (!line) continue;
 
+    // explicit bullet glyph → bullet
     if (BULLET_PREFIX.test(line)) {
       buffer.push(line.replace(BULLET_PREFIX, '').trim());
       continue;
     }
 
-    // project header: short line, no bullet prefix, probably a name
-    if (line.length < 80 && !BULLET_PREFIX.test(line)) {
+    // project header: short, name-shaped, no action-verb opener
+    if (looksLikeProjectHeader(line)) {
       pushCurrent();
       buffer = [];
       const [name, ...rest] = line.split(/\s*[—–|:]\s*/);
@@ -261,6 +315,13 @@ function parseProjectsBlock(block: string[]): ProjectItem[] {
         description: rest.length > 0 ? rest.join(' — ').trim() : undefined,
         bullets: [],
       };
+      continue;
+    }
+
+    // inside a project, glyph-less line → implicit bullet (the common case
+    // when pdf-parse strips bullet markers)
+    if (currentItem && line.length >= 8) {
+      buffer.push(line);
     }
   }
 
