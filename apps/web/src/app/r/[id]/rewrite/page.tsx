@@ -17,8 +17,16 @@ export default async function RewriteKickoff({ params }: { params: { id: string 
 
   // Idempotent: if we already rewrote this analysis, jump straight to the result.
   // Protects against refreshing /r/[id]/rewrite and re-running 30s of LLM work.
+  // BUT: if the cached rewrite is empty (0 bullets) from an earlier failure or
+  // bug, discard it and re-run — otherwise the user is stuck looking at a
+  // useless cached row forever.
   const existing = await store.findRewriteByAnalysisId(params.id);
-  if (existing) redirect(`/rw/${existing.id}`);
+  if (existing && existing.result.bullets.length > 0) {
+    redirect(`/rw/${existing.id}`);
+  }
+  if (existing && existing.result.bullets.length === 0) {
+    await store.deleteRewrite(existing.id);
+  }
 
   const resume = await store.getResume(analysis.resumeId);
   if (!resume) notFound();

@@ -690,6 +690,15 @@ export async function runRewrite({
     ? all.filter((t) => bulletIds.includes(t.bulletId))
     : all.slice(0, REWRITE_MAX_BULLETS_PER_REQUEST);
 
+  if (targets.length === 0) {
+    // Hard error — caller is bullet-iding nothing, OR the parsed resume has
+    // no bullets in experience/projects. Either case means we shouldn't
+    // persist an empty rewrite row that the kickoff page would then cache.
+    throw new Error(
+      `runRewrite: no bullet targets — parsed.experience=${parsed.experience.length} roles, parsed.projects=${parsed.projects?.length ?? 0}, totalBullets=${all.length}, requestedIds=${bulletIds?.length ?? 'all'}`,
+    );
+  }
+
   // three passes run in parallel — bullet rewrites are the heavy one; section
   // rewrite + final review each cost one extra LLM call.
   const [bulletResults, sectionRewrites, finalReview] = await Promise.all([
