@@ -51,11 +51,17 @@ export async function parsePdfBuffer(buf: Buffer): Promise<ParsedResume> {
   if (!rawText.trim()) {
     throw new Error('empty PDF — no extractable text (scanned image?)');
   }
+
+  // We *used* to throw when the text looked garbled, but that turns into a
+  // 500 the user can't act on. The downstream structure parser + the
+  // analysis page's no-bullets banner already give actionable guidance
+  // ("re-upload, your parsed resume has 0 experience roles, 0 bullets"),
+  // so just log and continue. The LLM analysis can still do something
+  // useful even with mangled text.
   if (looksDegenerate(rawText)) {
-    // Both extractors failed to recover spaces. Tell the user something
-    // actionable instead of silently producing garbage downstream.
-    throw new Error(
-      'PDF text appears garbled (custom font CMap with no space mapping). Re-export the resume with "Embed standard fonts" or save as plain PDF/A.',
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[parse] degenerate text detected (space/letter ratio ${qualityScore(rawText).toFixed(3)}, length ${rawText.length}). Passing through to structure parser anyway.`,
     );
   }
 
