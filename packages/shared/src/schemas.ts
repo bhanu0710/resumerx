@@ -96,6 +96,41 @@ export const SectionFeedbackSchema = z.object({
 });
 export type SectionFeedback = z.infer<typeof SectionFeedbackSchema>;
 
+// Lightweight pass-through shapes for the deterministic checks layer. The
+// authoritative shapes live in resume-checks.ts; we keep duplicates here so
+// AnalysisSchema doesn't introduce a circular re-export.
+export const ResumeCheckResultSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  category: z.enum(['impact', 'format', 'content', 'ats', 'skills']),
+  verdict: z.enum(['pass', 'warn', 'fail']),
+  score: z.number().min(0).max(100),
+  detail: z.string(),
+  fix: z.string().optional(),
+  evidence: z.array(z.string()).optional(),
+});
+export const ResumeChecksDataSchema = z.object({
+  overallScore: z.number().min(0).max(100),
+  byCategory: z.record(z.string(), z.number().min(0).max(100)),
+  checks: z.array(ResumeCheckResultSchema),
+  passed: z.number(),
+  warned: z.number(),
+  failed: z.number(),
+});
+// internal duplicate to avoid circular re-export; the canonical schema is in resume-checks.ts
+const _KeywordDensityRowSchema = z.object({
+  term: z.string(),
+  jdCount: z.number(),
+  resumeCount: z.number(),
+  importance: z.enum(['high', 'medium', 'low']),
+});
+export const KeywordDensityDataSchema = z.object({
+  rows: z.array(_KeywordDensityRowSchema),
+  totalJdTerms: z.number(),
+  matchedTerms: z.number(),
+  matchPct: z.number(),
+});
+
 export const AnalysisSchema = z.object({
   id: z.string(),
   overallScore: z.number().min(0).max(100),
@@ -103,12 +138,22 @@ export const AnalysisSchema = z.object({
   atsIssues: z.array(ATSIssueSchema),
   keywordMatch: KeywordMatchSchema,
   sections: z.array(SectionFeedbackSchema),
+  // Deterministic checks — Resume Worded / Jobscan-style scorecard. Optional
+  // for backward compatibility with analyses created before this layer existed.
+  checks: ResumeChecksDataSchema.optional(),
+  keywordDensity: KeywordDensityDataSchema.optional(),
   createdAt: z.string(),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
-// the LLM returns this shape without id/createdAt — we stamp those on insert
-export const AnalysisLLMSchema = AnalysisSchema.omit({ id: true, createdAt: true });
+// the LLM returns this shape without id/createdAt/checks/keywordDensity —
+// we stamp id+createdAt on insert and run checks+keywordDensity locally.
+export const AnalysisLLMSchema = AnalysisSchema.omit({
+  id: true,
+  createdAt: true,
+  checks: true,
+  keywordDensity: true,
+});
 export type AnalysisLLM = z.infer<typeof AnalysisLLMSchema>;
 
 // --- Bullet rewrite + validator ---

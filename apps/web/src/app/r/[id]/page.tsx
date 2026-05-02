@@ -1,9 +1,15 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, AlertTriangle, Info, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Info, CheckCircle2, XCircle } from 'lucide-react';
 import { getStore } from '@/server/db';
 import { RegenerateAnalysisButton } from '@/components/regenerate-analysis-button';
-import type { Analysis, ATSIssue } from '@resumerx/shared';
+import type {
+  Analysis,
+  ATSIssue,
+  CheckResult,
+  KeywordDensity,
+  ResumeChecks,
+} from '@resumerx/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,11 +69,15 @@ export default async function ResultsPage({ params }: { params: { id: string } }
         </div>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-4">
         <ScoreCard label="overall" value={a.overallScore} />
         <ScoreCard label="ats compatibility" value={a.atsScore} />
         <ScoreCard label="keyword match" value={a.keywordMatch.score} />
+        {a.checks && <ScoreCard label="resume checks" value={a.checks.overallScore} />}
       </section>
+
+      {a.checks && <ChecksScorecard checks={a.checks} />}
+      {a.keywordDensity && <KeywordDensityTable kd={a.keywordDensity} />}
 
       <section className="mt-10">
         <h2 className="mb-4 text-lg font-medium">keyword match</h2>
@@ -207,6 +217,149 @@ function IssueRow({ issue }: { issue: ATSIssue }) {
         </div>
       </div>
     </li>
+  );
+}
+
+function ChecksScorecard({ checks }: { checks: ResumeChecks }) {
+  const grouped: Record<string, CheckResult[]> = {};
+  for (const c of checks.checks) {
+    if (!grouped[c.category]) grouped[c.category] = [];
+    grouped[c.category]!.push(c);
+  }
+  const categoryOrder: { key: string; label: string }[] = [
+    { key: 'impact', label: 'impact' },
+    { key: 'format', label: 'format' },
+    { key: 'content', label: 'content' },
+    { key: 'ats', label: 'ats parseability' },
+    { key: 'skills', label: 'skills' },
+  ];
+  return (
+    <section className="mt-10">
+      <div className="mb-4 flex items-baseline justify-between gap-4">
+        <h2 className="text-lg font-medium">resume checks</h2>
+        <p className="text-muted-foreground text-sm">
+          {checks.passed} pass · {checks.warned} warn · {checks.failed} fail
+        </p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        {categoryOrder.map(({ key, label }) => {
+          const list = grouped[key];
+          if (!list || list.length === 0) return null;
+          const catScore = checks.byCategory[key] ?? 0;
+          return (
+            <div key={key} className="border-border/60 bg-card/40 rounded-xl border p-5">
+              <div className="mb-3 flex items-baseline justify-between">
+                <h3 className="text-base font-medium capitalize">{label}</h3>
+                <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                  {catScore}
+                </span>
+              </div>
+              <ul className="space-y-3">
+                {list.map((c) => (
+                  <CheckRow key={c.id} check={c} />
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CheckRow({ check }: { check: CheckResult }) {
+  const Icon =
+    check.verdict === 'pass' ? CheckCircle2 : check.verdict === 'warn' ? AlertTriangle : XCircle;
+  const tone =
+    check.verdict === 'pass'
+      ? 'text-primary'
+      : check.verdict === 'warn'
+        ? 'text-amber-400'
+        : 'text-destructive';
+  return (
+    <li>
+      <div className="flex items-start gap-2">
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone}`} />
+        <div className="flex-1">
+          <p className="text-sm font-medium leading-snug">{check.name}</p>
+          <p className="text-muted-foreground mt-0.5 text-xs">{check.detail}</p>
+          {check.fix && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              <span className="text-foreground font-medium">fix:</span> {check.fix}
+            </p>
+          )}
+          {check.evidence && check.evidence.length > 0 && (
+            <ul className="text-muted-foreground/80 mt-1 space-y-0.5 text-[11px] italic">
+              {check.evidence.map((e, i) => (
+                <li key={i}>· {e}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function KeywordDensityTable({ kd }: { kd: KeywordDensity }) {
+  if (kd.rows.length === 0) return null;
+  return (
+    <section className="mt-10">
+      <div className="mb-4 flex items-baseline justify-between gap-4">
+        <h2 className="text-lg font-medium">keyword density</h2>
+        <p className="text-muted-foreground text-sm">
+          matched {kd.matchedTerms} of {kd.totalJdTerms} top JD terms ({kd.matchPct}%)
+        </p>
+      </div>
+      <div className="border-border/60 bg-card/40 overflow-hidden rounded-xl border">
+        <table className="w-full text-sm">
+          <thead className="border-border/60 text-muted-foreground border-b text-xs uppercase tracking-wider">
+            <tr>
+              <th className="px-4 py-2 text-left font-mono font-normal">term</th>
+              <th className="px-4 py-2 text-right font-mono font-normal">in jd</th>
+              <th className="px-4 py-2 text-right font-mono font-normal">in resume</th>
+              <th className="px-4 py-2 text-left font-mono font-normal">priority</th>
+            </tr>
+          </thead>
+          <tbody>
+            {kd.rows.map((row) => {
+              const missing = row.resumeCount === 0;
+              return (
+                <tr
+                  key={row.term}
+                  className={`border-border/40 border-t ${missing ? 'bg-destructive/5' : ''}`}
+                >
+                  <td className="px-4 py-2 font-mono">{row.term}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{row.jdCount}</td>
+                  <td
+                    className={`px-4 py-2 text-right tabular-nums ${missing ? 'text-destructive' : 'text-primary'}`}
+                  >
+                    {row.resumeCount}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span
+                      className={`font-mono text-[10px] uppercase tracking-wider ${
+                        row.importance === 'high'
+                          ? 'text-destructive'
+                          : row.importance === 'medium'
+                            ? 'text-amber-400'
+                            : 'text-muted-foreground'
+                      }`}
+                    >
+                      {row.importance}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-muted-foreground mt-2 text-xs">
+        rows in red are JD terms missing entirely from your resume — high-priority ones are the
+        biggest match-rate wins.
+      </p>
+    </section>
   );
 }
 

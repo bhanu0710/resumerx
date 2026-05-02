@@ -1,6 +1,8 @@
 import 'server-only';
 import {
   AnalysisLLMSchema,
+  computeKeywordDensity,
+  runResumeChecks,
   type Analysis,
   type AnalysisLLM,
   type ParsedResume,
@@ -222,10 +224,21 @@ export async function runAnalysis({
   parsed,
   jobDescription,
 }: RunAnalysisInput): Promise<RunAnalysisOutput> {
+  // Run deterministic checks + keyword density locally — no LLM dependency.
+  // These layer onto whatever the LLM (or stub) produces.
+  const checks = runResumeChecks(parsed);
+  const keywordDensity = computeKeywordDensity(jobDescription, parsed);
+
   if (!env.groq.apiKey) {
     const llm = stubAnalysisFromHeuristics(parsed, jobDescription);
     return {
-      analysis: { ...llm, id: analysisId, createdAt: new Date().toISOString() },
+      analysis: {
+        ...llm,
+        id: analysisId,
+        createdAt: new Date().toISOString(),
+        checks,
+        keywordDensity,
+      },
       model: 'stub-heuristic',
       promptTokens: 0,
       completionTokens: 0,
@@ -255,7 +268,13 @@ export async function runAnalysis({
 
   const llm = parseLLMJson(res.content);
   return {
-    analysis: { ...llm, id: analysisId, createdAt: new Date().toISOString() },
+    analysis: {
+      ...llm,
+      id: analysisId,
+      createdAt: new Date().toISOString(),
+      checks,
+      keywordDensity,
+    },
     model: res.model,
     promptTokens: res.promptTokens,
     completionTokens: res.completionTokens,
